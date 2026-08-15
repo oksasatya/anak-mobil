@@ -36,6 +36,7 @@ pub mod usecase;
 use std::fmt;
 
 use platform::config::Config;
+use platform::state::AppState;
 use platform::{logging, shutdown};
 
 /// Which process this is.
@@ -117,12 +118,37 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 /// HTTP role.
-///
-/// The router, middleware, and probes land with the HTTP adapter.
 async fn run_web(config: &Config) -> anyhow::Result<()> {
-    tracing::info!(bind = %config.bind_addr, "http not wired yet");
-    shutdown::signal_received().await;
-    tracing::info!("shutdown signal received, draining");
+    // Lazy: no socket is opened here, so a database that is briefly down does
+    // not stop the process from starting and reporting *why* it is not ready.
+    let pool = adapter::postgres::connect(config.database_url.expose())?;
+    // Eager, because `ConnectionManager` establishes its first connection on
+    // construction. A Redis that is down at boot fails the process here.
+    let redis = adapter::redis::connect(config.redis_url.expose()).await?;
+
+    let state = AppState {
+        pool: pool.clone(),
+        redis: redis.clone(),
+    };
+    let router = adapter::http::router(state);
+
+    adapter::http::serve(&config.bind_addr, router, shutdown::signal_received()).await?;
+
+    // `serve` returns once the signal arrived and in-flight requests drained.
+    // The rest of teardown runs under the same deadline as the drain, because
+    // a budget that stops at the drain bounds nothing: `PgPool::close` waits
+    // indefinitely for a connection still checked out by a stuck handler.
+    tracing::info!("draining complete, closing connections");
+    let closed = shutdown::within(adapter::http::DRAIN_TIMEOUT, async move {
+        // Reverse of startup: Redis was opened last, so it closes first.
+        drop(redis);
+        pool.close().await;
+    })
+    .await;
+
+    if closed {
+        tracing::info!("connections closed");
+    }
     Ok(())
 }
 

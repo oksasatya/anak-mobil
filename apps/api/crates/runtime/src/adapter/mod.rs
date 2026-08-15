@@ -25,5 +25,6 @@
 //! AM-364); Postgres repositories do not, because `#[sqlx::test]` gives a
 //! transactional test database that exercises the real SQL.
 
+pub mod http;
 pub mod postgres;
 pub mod redis;
