@@ -22,8 +22,19 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "CC0-1.0",
+    # Boost. Permissive, no attribution required in binary form. Arrives with
+    # `ryu`, the float formatter serde_json uses.
+    "BSL-1.0",
+    # Community Data Licence, permissive variant. Arrives with the Mozilla
+    # root-certificate bundle that backs TLS to Postgres.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
+
+# Our own crates are never published, so they have no licence to check. The
+# alternative — inventing an SPDX expression for a private crate — makes the
+# check pass by lying to it.
+private = { ignore = true }
 
 [sources]
 unknown-registry = "deny"

@@ -5,7 +5,10 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 rust-version = "1.96"
-license = "UNLICENSED"
+# No `license` key. `publish = false` is what marks these crates private, and
+# `cargo deny` skips licence checks for private crates. An SPDX expression
+# invented to satisfy the tool — `UNLICENSED` is not one — makes the check
+# pass without making the statement true.
 publish = false
 
 # Lints applied to every crate in the workspace. Each crate opts in with
