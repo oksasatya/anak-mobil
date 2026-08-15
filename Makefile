@@ -10,7 +10,7 @@ LANDING := @anakmobil/landing
 TOKENS := @anakmobil/tokens
 
 .DEFAULT_GOAL := help
-.PHONY: help be-run be-web be-worker be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
+.PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check check
 
 help: ## Show this help
@@ -21,6 +21,9 @@ be-web: ## Run the API in its web role
 
 be-worker: ## Run the API in its worker role
 	cd $(API) && cargo run --bin anakmobil -- worker
+
+be-migrate: ## Apply database migrations and exit
+	cd $(API) && cargo run --bin anakmobil -- migrate
 
 be-fmt: ## Format the backend
 	cd $(API) && cargo fmt
