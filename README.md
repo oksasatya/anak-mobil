@@ -264,6 +264,8 @@ The repository is public so the work can be read, not because it is ready for co
 
 If something here is wrong — a claim that does not hold, an approach with a failure mode I have missed — open an issue. That is genuinely useful at this stage, and more useful than a pull request against a foundation that is still moving.
 
+If you do open a pull request, branch from `dev` and target `dev`. `main` is the release branch and only ever receives merges from `dev`.
+
 ## Licence
 
 None yet. Absent a licence file, default copyright applies and all rights are reserved: you may read this code, but not use, copy, modify, or redistribute it.
