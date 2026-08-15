@@ -17,13 +17,47 @@ apps/api/
     └── runtime/
         ├── migrations/     sqlx resolves these relative to THIS crate
         └── src/
-            ├── main.rs     role dispatch on the first CLI argument
+            ├── main.rs     launcher — starts a runtime, calls run()
+            ├── lib.rs      role dispatch, startup and shutdown order
             ├── usecase/    application services — own the transaction
             ├── adapter/    HTTP, Postgres, Redis, S3 — translate only
-            └── platform/   config, shutdown, later logging and pools
+            ├── platform/   config, logging, state, shutdown
+            └── shared/     envelope, errors, error codes, request id
 ```
 
 Three layers, three jobs: **domain decides**, **usecase orchestrates**, **adapter does I/O**.
+
+## `runtime` is a library with a thin binary
+
+`main.rs` starts a tokio runtime and calls `run()`. Everything else lives in `lib.rs` and below.
+
+This is the `cmd/server/main.go` shape of the Go boilerplate, and in Rust it buys two things beyond tidiness. Integration tests under `tests/` can drive the real router. And a type written before its first caller is public API rather than dead code — which is what let the response envelope be built and tested before any endpoint used it, without a blanket `#[allow(dead_code)]` that would also have hidden the parts that genuinely were unused.
+
+## The shared kit
+
+`shared/` holds what every adapter needs and no layer owns: the response envelope, the failure-to-HTTP mapping, error codes with their messages, and the request id.
+
+Only the parts with a consumer exist. `pagination`, `validation`, and `security` arrive with the first list endpoint, the first request DTO, and authentication respectively — an empty directory named after a future need is scaffolding, not structure.
+
+**Error messages are Bahasa Indonesia by default**, unlike the Go boilerplate's English-first catalog. An error message is product text, and the repository rule puts product text in Indonesian. English is available through `Accept-Language`.
+
+## Request id and language are task-local
+
+Both are set once by the HTTP middleware and read wherever they are needed.
+
+The obvious alternative — pass them as handler arguments — works for a successful response and fails for every other one. `?` returns an error value that has nowhere to carry a request id, and the error path is exactly where a support conversation starts. A task-local is safe here in a way a global is not: axum drives each request on its own task, and the middleware scopes the value to that task's future.
+
+The request id is always minted here, never read from an inbound `X-Request-Id`. A caller-supplied value that lands in a log line is how log injection works.
+
+## What a log line may contain
+
+Method, matched route pattern, status, latency, request id. Nothing else.
+
+Never the URI — a URI carries whatever the caller put in it, and a password-reset token in a path segment is the normal case, not the exotic one. A request that matches no route logs the constant `unmatched`, because that is precisely when the URI is most likely to hold something that should not be written down.
+
+Never a request body, never a whole struct. A VIN cannot leak from a value that is never handed to a logging macro.
+
+A cause is rendered at exactly one place: the 5xx branch of `ApiError::into_response`, into the log. `ApiError::source` is private with no accessor, so no handler can route a cause into a response body even by accident.
 
 ## The boundary is the dependency list
 

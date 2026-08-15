@@ -6,6 +6,26 @@ An Indonesia-first automotive platform: a digital garage that remembers your car
 
 Three things make it different from a forum with a database attached. Every vehicle is a **structured record** — brand, model, generation, variant — so a question about wheel fitment can be answered with numbers instead of guesses. Every AI answer carries **evidence you can open**, pointing back at the build or repair it came from. And every answer states **how confident it is**, computed from how well the evidence matches *your* car, never from how similar the text looked.
 
+> **Early.** The backend serves two health probes and nothing else — no schema, no authentication, no business endpoints. The landing page is a holding page. The mobile app and backoffice are not scaffolded. Nothing is deployed anywhere. See [Status](#status) for what actually exists.
+
+---
+
+## Principles
+
+These are product decisions with teeth. Each has already cost an argument, and each is written as acceptance criteria somewhere so it cannot be quietly reversed.
+
+**Contributing to the community is never paywalled.** Sharing a build, reporting a problem, recording a service entry, answering someone's question — free forever, at every tier. Paid tiers buy AI depth and personal tooling, never the right to speak. A platform whose knowledge comes from its members cannot charge those members for the act of contributing it.
+
+**Private vehicle data is filtered on the server, including from admins.** Number plate, VIN, purchase price, and service costs never leave the server for anyone who should not see them. The client is never trusted to hide them, and an admin session is not a reason to expose them. Leaked plate and VIN data cannot be recalled.
+
+**An AI answer never ships without its safety warning.** Brakes, steering, structural damage, fuel leaks, electrical faults, overheating — these carry a prominent warning and a recommendation to see a technician. Answers are persisted whole *before* being considered complete; streaming is transport for the typing experience only. A dropped connection must never leave someone reading an answer whose warning never arrived.
+
+**Confidence comes from constraint match, not embedding distance.** Semantic similarity is not vehicle identity. Retrieval filters brand, model, generation, and variant *before* the vector search, and confidence is derived from how well the evidence matches your actual car plus where it came from. A confident answer about the wrong car is worse than no answer.
+
+**Reported, hidden, or deleted content is never cited as evidence.** There is a path that pulls content back out of the index. Framing community text as "evidence" with a confidence badge does more damage with bad content than a plain feed would.
+
+**Nothing is seeded with fake data.** No invented member counts, no fabricated testimonials, no screenshots of data that never existed. The platform launches empty and says so — the low-data state is designed as a primary experience, not a fallback.
+
 ---
 
 ## Architecture
@@ -206,17 +226,19 @@ Both run in CI on every push that touches a page or a token.
 
 Foundation only.
 
-`apps/api` builds, runs in both roles, validates its configuration, and shuts down gracefully — there are no endpoints, no tables, and no entities yet. `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds and deploys a holding page; the real landing page in AM-341 waits on the waitlist endpoint, because a signup form with nowhere to post is worse than no form.
+`apps/api` serves HTTP. It validates its configuration, logs structurally, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. There are still **no tables, no entities, and no business endpoints** — the only routes are the two probes.
 
-Nothing is deployed. There is no database, no authentication, and no API.
+`packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
+
+Nothing is deployed. There is no database schema and no authentication.
 
 Work is tracked in Jira project **AM**. The build order and its reasoning live on epic **AM-349**; the current sprint carries the label `sprint-1`.
 
 | Next | |
 |---|---|
-| AM-352 | Config, structured logging, health probes |
-| AM-351 | Response envelope and the single error choke point |
 | AM-353 | Database schema and migrations |
+| AM-354 | Authentication |
+| AM-341 | The real landing page |
 
 ---
 
@@ -227,6 +249,27 @@ Work is tracked in Jira project **AM**. The build order and its reasoning live o
 | [docs/prd.md](docs/prd.md) | Product requirements. Sections 48 and 68 predate the current stack and are stale. |
 | [docs/design.md](docs/design.md) | Design system — palette, typography, spacing, component naming |
 | [docs/mobile-feature-breakdown.md](docs/mobile-feature-breakdown.md) | Epic breakdown, Jira map, estimates, risks |
+| [apps/api/README.md](apps/api/README.md) | Running the backend, its routes, and how a request flows |
 | [apps/api/CLAUDE.md](apps/api/CLAUDE.md) | Backend conventions and the reasoning behind them |
 | [apps/landing/README.md](apps/landing/README.md) | Landing structure, and the mistakes that are easy to repeat |
 | [packages/tokens/README.md](packages/tokens/README.md) | How to consume and change a design token |
+
+The `CLAUDE.md` files are instructions for AI coding agents working in this repository. They are useful to human readers too — they carry the reasoning behind conventions that the code alone does not explain.
+
+---
+
+## Contributing
+
+The repository is public so the work can be read, not because it is ready for contributors. There is no schema yet, so most of what a contribution would touch does not exist.
+
+If something here is wrong — a claim that does not hold, an approach with a failure mode I have missed — open an issue. That is genuinely useful at this stage, and more useful than a pull request against a foundation that is still moving.
+
+## Licence
+
+None yet. Absent a licence file, default copyright applies and all rights are reserved: you may read this code, but not use, copy, modify, or redistribute it.
+
+That is a placeholder rather than a decision. Until a licence is chosen, treat the code as read-only.
+
+---
+
+Built by [Oksa Satya](https://github.com/oksasatya). Product-facing text is Bahasa Indonesia; code, comments, and documentation are English.
