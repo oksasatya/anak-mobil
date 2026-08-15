@@ -1,9 +1,11 @@
-//! The Postgres connection pool.
+//! The Postgres connection pool and the migration runner.
 //!
-//! Connectivity only. Tables, migrations, and queries arrive with AM-353;
-//! nothing here writes SQL, which is why the `sqlx` `macros` feature is not
-//! enabled yet — `query!` needs either a live schema or a committed `.sqlx`
-//! cache, and neither exists.
+//! No queries yet, which is why the `sqlx` `macros` feature is still off:
+//! `query!` needs either a live schema or a committed `.sqlx` cache, and the
+//! cache only exists once something is querying. Repositories arrive with the
+//! stories that need them, each bringing its own migration.
+
+pub mod migrate;
 
 use std::time::Duration;
 
@@ -15,12 +17,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Build the pool.
 ///
-/// Does not verify the credentials — `connect_lazy` opens no socket, so a
-/// database that is down at boot does not stop the process from starting.
-/// That is deliberate: a service that refuses to start when Postgres is
-/// briefly unavailable cannot report *why* it is unhealthy, and a restart
-/// loop is harder to diagnose than a running process answering `/readyz`
-/// with a reason.
+/// `connect_lazy` opens no socket, so constructing the pool cannot fail on a
+/// database that is briefly unreachable — the first real use connects.
+///
+/// For the **worker** role that means the process starts and reports its
+/// state through the probe rather than through a restart loop. For the
+/// **web** role it does not, and deliberately so: migrations run before the
+/// listener binds, so an unreachable database stops startup. A service that
+/// cannot reach its database cannot serve anything either, and refusing to
+/// start is more honest than listening on a port and answering 503 forever.
 ///
 /// # Errors
 ///

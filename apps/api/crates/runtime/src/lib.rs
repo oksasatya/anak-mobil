@@ -1,12 +1,14 @@
-//! AnakMobil backend — one library, two process roles.
+//! AnakMobil backend — one library, three process roles.
 //!
 //! ```text
-//! anakmobil web      # HTTP server
-//! anakmobil worker   # background job consumer
+//! anakmobil web       # HTTP server
+//! anakmobil worker    # background job consumer
+//! anakmobil migrate   # apply migrations and exit
 //! ```
 //!
-//! Both roles run from the same build and share the same configuration.
-//! They are separate *processes* rather than tasks in one process because
+//! All three run from the same build and share the same configuration. Web
+//! and worker are separate *processes* rather than tasks in one process
+//! because
 //! the worker does CPU-heavy work — image compression above all — and a
 //! spike of uploads inside the web process would starve HTTP and SSE.
 //! That is a blast-radius decision, not a step toward microservices:
@@ -24,7 +26,7 @@
 //!
 //! # Startup and shutdown are mirror images
 //!
-//! Up: configuration, logging, Postgres, Redis, router, listener.
+//! Up: configuration, logging, Postgres, migrations, Redis, router, listener.
 //! Down: stop accepting, drain, Redis, Postgres — reverse order, so nothing
 //! is closed while something that needs it is still finishing.
 
@@ -44,16 +46,19 @@ use platform::{logging, shutdown};
 pub enum Role {
     Web,
     Worker,
+    /// Apply migrations and exit. See [`adapter::postgres::migrate`] for why
+    /// this exists alongside the migration the web role runs on boot.
+    Migrate,
 }
 
 impl Role {
-    const USAGE: &'static str = "usage: anakmobil <web|worker>";
+    const USAGE: &'static str = "usage: anakmobil <web|worker|migrate>";
 
     /// Read the role from the first command-line argument.
     ///
     /// Matched by hand rather than with an argument parser. There is one
-    /// argument with two values; `clap` earns its place when there are
-    /// subcommands and flags, not before.
+    /// argument with three values; `clap` earns its place when there are
+    /// flags, not before.
     ///
     /// # Errors
     ///
@@ -62,6 +67,7 @@ impl Role {
         match arg {
             Some("web") => Ok(Self::Web),
             Some("worker") => Ok(Self::Worker),
+            Some("migrate") => Ok(Self::Migrate),
             Some(other) => Err(format!("unknown role `{other}`\n{}", Self::USAGE)),
             None => Err(format!("no role given\n{}", Self::USAGE)),
         }
@@ -73,6 +79,7 @@ impl fmt::Display for Role {
         f.write_str(match self {
             Self::Web => "web",
             Self::Worker => "worker",
+            Self::Migrate => "migrate",
         })
     }
 }
@@ -111,17 +118,33 @@ pub async fn run() -> anyhow::Result<()> {
     match role {
         Role::Web => run_web(&config).await?,
         Role::Worker => run_worker().await,
+        Role::Migrate => run_migrate(&config).await?,
     }
 
     tracing::info!(%role, "stopped");
     Ok(())
 }
 
+/// Apply migrations and exit.
+async fn run_migrate(config: &Config) -> anyhow::Result<()> {
+    let pool = adapter::postgres::connect(config.database_url.expose())?;
+    adapter::postgres::migrate::run(&pool).await?;
+    pool.close().await;
+    Ok(())
+}
+
 /// HTTP role.
 async fn run_web(config: &Config) -> anyhow::Result<()> {
-    // Lazy: no socket is opened here, so a database that is briefly down does
-    // not stop the process from starting and reporting *why* it is not ready.
     let pool = adapter::postgres::connect(config.database_url.expose())?;
+
+    // Before the listener binds, not after (AM-352 AC2). A process that
+    // accepts a request against a schema it does not expect fails in ways
+    // that are far harder to read than a startup that refuses.
+    //
+    // This is also the first real connection, so an unreachable database
+    // stops the web role here rather than at the first request.
+    adapter::postgres::migrate::run(&pool).await?;
+
     // Eager, because `ConnectionManager` establishes its first connection on
     // construction. A Redis that is down at boot fails the process here.
     let redis = adapter::redis::connect(config.redis_url.expose()).await?;
@@ -157,6 +180,11 @@ async fn run_web(config: &Config) -> anyhow::Result<()> {
 /// The Postgres-backed queue — lease, retry with backoff, dead-letter — lands
 /// in AM-358, and the media pipeline it first serves in AM-359.
 ///
+/// Deliberately does **not** run migrations. One role owns applying them, and
+/// a worker starting against a schema the web role has not migrated yet is
+/// exactly the case expand-and-contract makes safe: a column is added in one
+/// release and only removed in a later one, so an older reader keeps working.
+///
 /// No HTTP probe port here, deliberately. One was designed and dropped: a
 /// listener running beside a job loop answers `200` while that loop is
 /// deadlocked, which is precisely the failure it would have been added to
@@ -176,25 +204,27 @@ mod tests {
     fn known_roles_parse() {
         assert_eq!(Role::parse(Some("web")), Ok(Role::Web));
         assert_eq!(Role::parse(Some("worker")), Ok(Role::Worker));
+        assert_eq!(Role::parse(Some("migrate")), Ok(Role::Migrate));
     }
 
     #[test]
     fn unknown_role_names_itself_and_shows_usage() {
         let err = Role::parse(Some("webb")).unwrap_err();
         assert!(err.contains("webb"));
-        assert!(err.contains("web|worker"));
+        assert!(err.contains("web|worker|migrate"));
     }
 
     #[test]
     fn missing_role_shows_usage() {
         let err = Role::parse(None).unwrap_err();
         assert!(err.contains("no role given"));
-        assert!(err.contains("web|worker"));
+        assert!(err.contains("web|worker|migrate"));
     }
 
     #[test]
     fn role_renders_as_its_argument() {
         assert_eq!(Role::Web.to_string(), "web");
         assert_eq!(Role::Worker.to_string(), "worker");
+        assert_eq!(Role::Migrate.to_string(), "migrate");
     }
 }
