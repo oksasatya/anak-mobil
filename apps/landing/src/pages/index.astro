@@ -1,0 +1,84 @@
+---
+/**
+ * Holding page.
+ *
+ * AM-341 replaces this with the real landing page — hero, product sections,
+ * store links, and the waitlist form as a React island. The form and the
+ * storage behind it are AM-346, and neither exists yet, so what ships now is
+ * the smallest honest page: it says what AnakMobil is, admits it is not open
+ * yet, and proves the token pipeline reaches the browser.
+ *
+ * Deliberately absent: a "Daftar tunggu" button that does nothing. A dead
+ * control costs more trust than an empty page.
+ */
+import Base from "../layouts/Base.astro";
+
+const title = "AnakMobil.id — Garasi digital dan komunitas pemilik mobil";
+const description =
+  "Catat riwayat servis, rawat build, dan tanya soal mobilmu ke sesama pemilik. Sedang dibangun untuk pemilik mobil di Indonesia.";
+---
+
+<Base title={title} description={description} path="/">
+  <main>
+    <div class="shell">
+      <p class="mark">AnakMobil<span class="dot">.</span>id</p>
+
+      <h1>Garasi digital buat mobil kamu.</h1>
+
+      <p class="lede">
+        Riwayat servis yang tidak hilang saat mobilnya dijual. Catatan build
+        yang rapi. Dan orang-orang yang pernah memasang part yang sama di mobil
+        yang sama.
+      </p>
+
+      <p class="note">
+        Masih dibangun. Halaman ini akan diganti begitu pendaftaran dibuka.
+      </p>
+    </div>
+  </main>
+</Base>
+
+<style>
+  main {
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+    padding: var(--space-6) var(--page-padding);
+  }
+
+  .shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    max-width: 34rem;
+  }
+
+  .mark {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-text-secondary);
+  }
+
+  .dot {
+    color: var(--accent-500);
+  }
+
+  h1 {
+    font-size: clamp(2rem, 7vw, 3.25rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .lede {
+    font-size: clamp(1rem, 3.4vw, 1.125rem);
+    color: var(--color-text-secondary);
+  }
+
+  .note {
+    font-size: 0.875rem;
+    color: var(--color-text-tertiary);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-4);
+  }
+</style>

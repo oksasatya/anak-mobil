@@ -1,0 +1,7 @@
+# The workspace denies `unwrap`, `expect`, and `panic` on production
+# paths (AM-350 AC4). Tests are the deliberate exception: an assertion
+# that panics IS the failure signal, and forcing `?` through every test
+# body buys nothing but noise.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

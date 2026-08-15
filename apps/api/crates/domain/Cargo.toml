@@ -1,0 +1,31 @@
+# AM-350 AC2 — this dependency list IS the architectural boundary.
+#
+# There is no `axum`, no `sqlx`, no `reqwest`, no `redis`, no `tracing`,
+# and no `serde` here, and that is deliberate. `use axum::…` inside this
+# crate fails to compile with `error[E0432]: unresolved import` — not a
+# lint that can be allowed away, but a name that does not exist.
+#
+# Before adding anything here, ask: is this the language, or is this
+# infrastructure? Only the former belongs.
+#
+# `serde` is excluded on purpose too: entities are never serialised.
+# Wire shapes are DTOs in the runtime crate. Letting serde in lets the
+# wire format quietly start dictating the domain model.
+
+[package]
+name = "anakmobil-domain"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "2.0.20"
+time = { version = "0.3.55", features = ["macros"] }
+uuid = { version = "1.24.1", features = ["v4"] }
+
+[dev-dependencies]

@@ -1,0 +1,26 @@
+{
+  "name": "@anakmobil/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Design tokens generated from docs/design.md — one source, three consumers",
+  "main": "./src/tokens.js",
+  "types": "./src/tokens.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/tokens.d.ts",
+      "default": "./src/tokens.js"
+    },
+    "./css": "./dist/tokens.css",
+    "./theme": "./dist/theme.css"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && npm test"
+  }
+}

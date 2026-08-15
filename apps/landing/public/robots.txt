@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# The Sitemap line lands with @astrojs/sitemap, once there is more than one
+# page to list. Pointing at a sitemap that 404s is worse than not having one.

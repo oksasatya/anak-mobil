@@ -1,0 +1,79 @@
+name: backend
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/backend.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  # sqlx's compile-time macros prefer a live database whenever
+  # DATABASE_URL is set, silently ignoring the committed .sqlx cache. CI
+  # must build from the cache alone, otherwise a stale cache passes here
+  # and fails on the next machine that has no database.
+  SQLX_OFFLINE: "true"
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      # AM-350 AC2. The compiler already rejects `use axum` inside the
+      # domain crate, because the dependency is absent. This asserts the
+      # absence directly, so the boundary is proven on every push rather
+      # than only when somebody happens to violate it.
+      - name: Domain has no framework dependency
+        run: |
+          if cargo tree -p anakmobil-domain \
+            | grep -qE '\b(axum|sqlx|reqwest|redis|tracing|tokio)\b'; then
+            echo "::error::a framework reached anakmobil-domain"
+            cargo tree -p anakmobil-domain
+            exit 1
+          fi
+          echo "anakmobil-domain is clean"
+
+  # Enabled by AM-353, when the first migration and query exist. Until
+  # then there is no .sqlx cache to check and no schema to check it
+  # against, so running it would only produce a confusing red build.
+  #
+  # - name: sqlx cache is current
+  #   run: cargo sqlx prepare --check --workspace
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Advisories
+        run: cargo audit
+      - name: Licences and bans
+        run: cargo deny check

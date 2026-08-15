@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "landing-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview", "--workspace", "@anakmobil/landing"],
+      "port": 4321
+    },
+    {
+      "name": "landing-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@anakmobil/landing"],
+      "port": 4321
+    }
+  ]
+}

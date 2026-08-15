@@ -1,0 +1,33 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "UNLICENSED"
+publish = false
+
+# Lints applied to every crate in the workspace. Each crate opts in with
+# `[lints] workspace = true`.
+#
+# The unwrap/expect/panic/todo denials are the teeth behind AM-350 AC4:
+# production paths propagate with `Result` and `?`. Test code is exempt —
+# clippy does not apply these to `#[cfg(test)]`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+await_holding_lock = "deny"
+too_many_arguments = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

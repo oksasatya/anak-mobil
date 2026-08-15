@@ -1,0 +1,12 @@
+{
+  "name": "@anakmobil/assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Brand assets shared by the landing page, the backoffice, and the mobile app",
+  "exports": {
+    "./img/*": "./img/*"
+  },
+  "files": [
+    "img"
+  ]
+}

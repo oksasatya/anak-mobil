@@ -1,0 +1,87 @@
+name: frontend
+
+# The design tokens are a dependency of every frontend surface, so a change
+# to them has to re-run this job even when no page file was touched. That is
+# what the packages/tokens path is doing here.
+on:
+  push:
+    paths:
+      - "apps/landing/**"
+      - "packages/tokens/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "apps/landing/**"
+      - "packages/tokens/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/frontend.yml"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Tokens first, and tested. The landing imports the stylesheet this
+      # step generates, so a token regression must fail here rather than
+      # reach a page and look like a styling bug.
+      - name: Design tokens
+        run: npm run check --workspace @anakmobil/tokens
+
+      - name: Type check
+        run: npm run check --workspace @anakmobil/landing
+
+      - name: Build
+        run: npm run build --workspace @anakmobil/landing
+
+      # AM-341 AC6: only the waitlist form may hydrate. Until that island
+      # exists the correct count is zero, and this catches the accidental
+      # `client:load` that would quietly turn a static page into an app.
+      - name: No unexpected JavaScript shipped
+        working-directory: apps/landing
+        run: |
+          count=$(find dist -name '*.js' | wc -l | tr -d ' ')
+          if [ "$count" != "0" ]; then
+            echo "::error::the landing shipped $count JavaScript file(s)"
+            find dist -name '*.js'
+            exit 1
+          fi
+          echo "0 JavaScript files, as expected"
+
+      # The token pipeline reaching the browser is the thing most likely to
+      # break silently: a dropped @import still builds, and every colour
+      # resolves to nothing. Assert one real token in the output.
+      - name: Design tokens reached the page
+        working-directory: apps/landing
+        run: |
+          if ! grep -qi -- '--accent-500:#ed491c' dist/index.html; then
+            echo "::error::token variables are missing from the built HTML"
+            exit 1
+          fi
+          echo "tokens present"
+
+      # public/ is copied verbatim to the site root, so anything a tool drops
+      # in there gets a public URL. An editor cache did exactly that during
+      # this scaffold — it reached dist/.impeccable/hook.cache.json, carrying
+      # absolute filesystem paths and session identifiers.
+      - name: No hidden files published
+        working-directory: apps/landing
+        run: |
+          hidden=$(find dist -name '.*' -not -name '.' -not -path 'dist/_astro/*')
+          if [ -n "$hidden" ]; then
+            echo "::error::hidden files reached the published output"
+            echo "$hidden"
+            exit 1
+          fi
+          echo "no hidden files in dist"

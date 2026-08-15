@@ -1,0 +1,36 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+.astro/
+.turbo/
+*.tsbuildinfo
+
+# Environment — .env.example is committed, .env never is
+.env
+.env.*
+!.env.example
+
+# Expo / React Native
+.expo/
+*.jks
+*.p8
+*.p12
+*.keystore
+*.mobileprovision
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Coverage
+lcov.info
+coverage/
+
+# Tooling caches
+.impeccable/hook.cache.json

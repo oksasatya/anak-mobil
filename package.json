@@ -1,0 +1,20 @@
+{
+  "name": "anak-mobil",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AnakMobil.id — automotive community, digital garage, and AI assistant for Indonesia",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "be:web": "make be-web",
+    "be:worker": "make be-worker",
+    "be:check": "make be-check",
+    "be:lint": "make be-lint",
+    "be:test": "make be-test"
+  }
+}
