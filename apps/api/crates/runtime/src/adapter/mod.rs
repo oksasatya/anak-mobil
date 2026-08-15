@@ -25,4 +25,5 @@
 //! AM-364); Postgres repositories do not, because `#[sqlx::test]` gives a
 //! transactional test database that exercises the real SQL.
 
-// Populated as the API stories land — AM-351 (HTTP), AM-353 (Postgres).
+pub mod postgres;
+pub mod redis;

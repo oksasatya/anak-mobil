@@ -36,7 +36,7 @@ pub mod usecase;
 use std::fmt;
 
 use platform::config::Config;
-use platform::shutdown;
+use platform::{logging, shutdown};
 
 /// Which process this is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +95,7 @@ pub async fn run() -> anyhow::Result<()> {
     // return, which is correct: the process is about to exit, and a
     // structured log nobody is collecting yet helps nobody.
     let config = Config::from_env()?;
+    logging::init(config.app_env, &config.log_level)?;
 
     tracing::info!(
         %role,

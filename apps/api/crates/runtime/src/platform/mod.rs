@@ -5,4 +5,6 @@
 //! product rather than to the process, it belongs in the domain crate.
 
 pub mod config;
+pub mod logging;
 pub mod shutdown;
+pub mod state;
