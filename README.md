@@ -171,6 +171,7 @@ Individually:
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 make be-web        # start the HTTP role
 make be-worker     # start the background role
+make be-migrate    # apply migrations and exit
 
 make ds-check      # regenerate the design tokens and test them
 make fe-dev        # landing dev server on :4321
@@ -226,18 +227,20 @@ Both run in CI on every push that touches a page or a token.
 
 Foundation only.
 
-`apps/api` serves HTTP. It validates its configuration, logs structurally, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. There are still **no tables, no entities, and no business endpoints** — the only routes are the two probes.
+`apps/api` serves HTTP. It validates its configuration, logs structurally, applies migrations before it listens, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. The vehicle catalog schema exists; its rows are a separate content project.
+
+There are still **no entities and no business endpoints** — the only routes are the two probes.
 
 `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
 
-Nothing is deployed. There is no database schema and no authentication.
+Nothing is deployed. There is no authentication.
 
 Work is tracked in Jira project **AM**. The build order and its reasoning live on epic **AM-349**; the current sprint carries the label `sprint-1`.
 
 | Next | |
 |---|---|
-| AM-353 | Database schema and migrations |
-| AM-354 | Authentication |
+| AM-354 | Authentication, Redis sessions, revocation |
+| AM-360 | Garage API — vehicles, catalog, service history |
 | AM-341 | The real landing page |
 
 ---

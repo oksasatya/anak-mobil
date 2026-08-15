@@ -16,8 +16,9 @@ make be-web        # from the repository root
 The `make` targets live at the repository root because Cargo insists on being invoked inside its own workspace:
 
 ```bash
-make be-web        # HTTP role
+make be-web        # HTTP role — applies migrations, then listens
 make be-worker     # background role
+make be-migrate    # apply migrations and exit
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 ```
 
@@ -189,7 +190,7 @@ Never lower a threshold, blanket-`#[allow]` a lint, or delete a failing test to 
 
 When `DATABASE_URL` is set, the `query!` macros check against the live database and **silently ignore** the committed `.sqlx` cache. A stale cache then passes locally and fails on any machine without a database.
 
-Builds already run with `SQLX_OFFLINE=true`. The `cargo sqlx prepare --check` step is written into `.github/workflows/backend.yml` but **commented out** — there is no schema and no cache to check yet, so it would only produce a confusing red build. Uncomment it with the first migration in AM-353, and from then on re-run `cargo sqlx prepare` and commit the result whenever a query or migration changes.
+Builds already run with `SQLX_OFFLINE=true`. The `cargo sqlx prepare --check` step is written into `.github/workflows/backend.yml` but **commented out**, and it stays that way until the first `query!` — not the first migration. A schema exists now; a `.sqlx` cache does not, because the cache records queries and there are none. Uncomment it with the first repository, and from then on re-run `cargo sqlx prepare` and commit the result whenever a query or migration changes.
 
 The `macros` feature is not enabled on the `sqlx` dependency yet, for the same reason: nothing here writes SQL.
 
