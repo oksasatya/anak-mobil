@@ -157,10 +157,10 @@ Three surfaces, one palette. Change the orange once and all three move; there is
 
 ## Getting started
 
-Requires Rust 1.96+ and Node 22+, plus Docker for Postgres and Redis once AM-353 lands.
+Requires Rust 1.96+ and [Bun](https://bun.sh) 1.3+, plus Docker for Postgres and Redis.
 
 ```bash
-npm install
+bun install
 cp apps/api/.env.example apps/api/.env
 make check         # every gate in the repository
 ```

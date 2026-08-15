@@ -56,10 +56,10 @@ be-check: be-fmt be-lint be-test be-boundary ## Everything the backend CI gate r
 # --- Design system -----------------------------------------------------------
 
 ds-build: ## Regenerate the CSS artifacts from the token source
-	npm run build --workspace $(TOKENS)
+	bun run --filter $(TOKENS) build
 
 ds-check: ## Regenerate the tokens and test them
-	npm run check --workspace $(TOKENS)
+	bun run --filter $(TOKENS) check
 
 # --- Landing -----------------------------------------------------------------
 #
@@ -67,16 +67,16 @@ ds-check: ## Regenerate the tokens and test them
 # and a stale dist/ there means the page silently ships yesterday's palette.
 
 fe-dev: ds-build ## Run the landing dev server
-	npm run dev --workspace $(LANDING)
+	bun run --filter $(LANDING) dev
 
 fe-build: ds-build ## Build the landing site
-	npm run build --workspace $(LANDING)
+	bun run --filter $(LANDING) build
 
 fe-preview: ## Serve the built landing site (what Lighthouse must measure)
-	npm run preview --workspace $(LANDING)
+	bun run --filter $(LANDING) preview
 
 fe-check: ds-check ## Type-check and build the landing site
-	npm run gate --workspace $(LANDING)
+	bun run --filter $(LANDING) gate
 	@echo "landing gate green"
 
 check: be-check fe-check ## Every gate in the repository

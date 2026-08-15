@@ -51,6 +51,22 @@ Two traps worth knowing. The issue type named `Sub-Task` (id 10068) is **not** a
 
 The Atlassian connector has Jira write access but Confluence read-only, and moving issues between Backlog and Board is a board operation it cannot perform at all. Say so rather than appearing to do it.
 
+## JavaScript toolchain
+
+**Bun, not npm.** `bun install`, `bun run`, `bun test`. There is no `package-lock.json` and no `npm` invocation anywhere — including inside a `package.json` script, where one would run silently on any machine that happens to have npm installed.
+
+```bash
+bun install                              # from the repository root
+bun run --filter @anakmobil/landing dev  # a single workspace
+make fe-dev                              # the same thing, through the wrapper
+```
+
+Bun's `--filter <package>` is the equivalent of npm's `--workspace <package>`, and `bun install --frozen-lockfile` is the equivalent of `npm ci` — it fails rather than updating `bun.lock`, so CI cannot quietly resolve a different dependency tree than the one that was reviewed.
+
+Node is not required. Bun runs the Astro build and the `node:test` suites in `packages/tokens` unchanged.
+
+**One exception is expected, and it is not a failure of this decision.** `apps/mobile` will use Expo, which is the slowest part of the JavaScript ecosystem to accommodate Bun — `bun install` generally works, but Metro and parts of the Expo CLI have historically assumed npm or yarn. If that bites, the answer is that **`apps/mobile` alone** uses a different package manager, not that the repository reverts. Verify before scaffolding it rather than assuming either way.
+
 ## Branching
 
 ```
