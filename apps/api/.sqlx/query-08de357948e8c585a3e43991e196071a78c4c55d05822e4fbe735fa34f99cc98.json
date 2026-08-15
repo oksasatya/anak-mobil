@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.plate, p.vin, p.purchase_price, p.purchase_date\n        FROM vehicle_private p\n        JOIN vehicles v ON v.id = p.vehicle_id\n        WHERE v.owner_id = $1 AND p.vehicle_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "plate",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicle_private",
+            "name": "plate"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "vin",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicle_private",
+            "name": "vin"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "purchase_price",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "vehicle_private",
+            "name": "purchase_price"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "purchase_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "vehicle_private",
+            "name": "purchase_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "08de357948e8c585a3e43991e196071a78c4c55d05822e4fbe735fa34f99cc98"
+}

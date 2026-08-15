@@ -32,13 +32,13 @@ sha2 = "0.11.0"
 # `macros` gives compile-time-checked SQL. It needs either a reachable
 # DATABASE_URL or the committed .sqlx cache; CI uses the cache, which is why
 # `cargo sqlx prepare` runs whenever a query changes.
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "macros", "uuid"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "macros", "uuid", "bigdecimal", "time"] }
 thiserror = "2.0.20"
-time = { version = "0.3.44", features = ["formatting"] }
+time = { version = "0.3.44", features = ["formatting", "parsing", "serde", "macros"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "net", "time"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
-uuid = { version = "1.24.1", features = ["v7"] }
+uuid = { version = "1.24.1", features = ["v7", "serde"] }
 
 [dev-dependencies]
 # `oneshot` drives a Router without binding a port, so the probe and envelope

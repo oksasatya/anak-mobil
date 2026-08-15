@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE vehicles SET\n            variant_id = $3, nickname = $4, described_as = $5,\n            year = $6, colour = $7, mileage_km = $8\n        WHERE owner_id = $1 AND id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Int2",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8ff593bbdad5cf2a443c06f6dfc60c45ecf2b7c58021e96a1d5aa503602e0562"
+}
