@@ -51,10 +51,47 @@ Two traps worth knowing. The issue type named `Sub-Task` (id 10068) is **not** a
 
 The Atlassian connector has Jira write access but Confluence read-only, and moving issues between Backlog and Board is a board operation it cannot perform at all. Say so rather than appearing to do it.
 
+## Branching
+
+```
+main ← dev ← feat/<ticket>-<slug>
+```
+
+**`main` is the release branch.** Nothing is committed to it directly and nothing is merged into it except from `dev`. It is what a stranger sees on the repository's front page and what a deploy will eventually track.
+
+**`dev` is the integration branch.** Every feature merges here first. It is branched from `main` and must stay green.
+
+**Work happens on a branch cut from `dev`**, never from `main` — a branch cut from `main` while `dev` is ahead produces a merge conflict that has nothing to do with the change:
+
+```bash
+git checkout dev && git pull
+git checkout -b feat/AM-353-database-schema
+```
+
+Name it after the ticket: `feat/AM-353-database-schema`, `fix/AM-361-fitment-null`, `chore/…`, `docs/…`.
+
+**A feature branch is opened as a pull request against `dev`.** The base is not the default, so pass it explicitly or the PR silently targets `main`:
+
+```bash
+gh pr create --base dev --title "…" --body "…"
+```
+
+**`dev` reaches `main` as its own pull request**, when the work on it is worth releasing rather than every time something lands.
+
+### Rules that hold on any branch
+
+**Commits are small and each one builds.** A commit that does not compile makes `git bisect` useless, which is most of the reason to split them at all. Where ordering makes that awkward — a module that references something not yet added — write the intermediate version rather than shipping a broken commit.
+
+**Commit messages are English and say *why*.** The diff already says what. A message that explains a decision, a reversal, or a defect found along the way is worth more than a list of files.
+
+**A red CI is not done.** Watch the run to green after pushing; fix, re-run locally, push again. Never merge or report completion on a run nobody watched finish.
+
+**Merge with a merge commit, not a squash**, when the individual commits were built to be readable. Squashing collapses work that was deliberately sequenced.
+
 ## Working here
 
 **Verify, do not assert.** Run the gate and read its output. "It compiles" is the floor. A summary of what you expect a command to print is not evidence it printed that.
 
 **The backlog is already specified.** 368 issues cover every surface. Before designing something, check whether a ticket already defines it — the acceptance criteria usually carry reasoning that is expensive to rediscover.
 
-**Do not commit or push unless asked.** Work accumulates in the working tree for review.
+**Do not commit or push unless asked.** Work accumulates in the working tree for review. When asked, follow the branching rules above — "commit and push" means a feature branch and a pull request into `dev`, not a commit on whatever branch happens to be checked out.
