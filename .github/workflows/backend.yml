@@ -25,6 +25,40 @@ defaults:
 jobs:
   gate:
     runs-on: ubuntu-latest
+
+    # The integration tests drive real Postgres and real Redis. Faking them
+    # would leave the two things most worth testing untested: the Lua scripts
+    # that make session rotation atomic, and the SQL the compiler checked but
+    # nobody ran.
+    services:
+      postgres:
+        # pgvector rather than plain postgres — the first migration enables
+        # the extension, so the stock image cannot run migrations at all.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: anakmobil
+          POSTGRES_DB: anakmobil
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:anakmobil@127.0.0.1:5432/anakmobil
+      REDIS_URL: redis://127.0.0.1:6379
+
     steps:
       - uses: actions/checkout@v5
 
@@ -42,8 +76,10 @@ jobs:
       - name: Lint
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # `--locked` so a test run cannot silently resolve a different
+      # dependency tree than the one that was reviewed.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       # AM-350 AC2. The compiler already rejects `use axum` inside the
       # domain crate, because the dependency is absent. This asserts the
@@ -59,12 +95,16 @@ jobs:
           fi
           echo "anakmobil-domain is clean"
 
-  # Enabled by AM-353, when the first migration and query exist. Until
-  # then there is no .sqlx cache to check and no schema to check it
-  # against, so running it would only produce a confusing red build.
-  #
-  # - name: sqlx cache is current
-  #   run: cargo sqlx prepare --check --workspace
+      # The trap this closes: when DATABASE_URL is set, the sqlx macros check
+      # against the live database and ignore the committed cache entirely. A
+      # stale cache then passes here and fails on the next machine that has no
+      # database. This step compares the two.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+
+      - name: sqlx cache is current
+        run: cargo sqlx prepare --check --workspace -- --all-targets
 
   audit:
     runs-on: ubuntu-latest

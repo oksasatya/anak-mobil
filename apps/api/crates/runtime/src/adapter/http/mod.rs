@@ -1,5 +1,6 @@
 //! The HTTP adapter: routes, middleware, and the server itself.
 
+pub mod auth;
 pub mod probe;
 pub mod request_id;
 
@@ -7,7 +8,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 use tokio::net::TcpListener;
 
 use crate::platform::state::AppState;
@@ -29,6 +30,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(probe::healthz))
         .route("/readyz", get(probe::readyz))
+        .route("/auth/register", post(auth::register))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/refresh", post(auth::refresh))
+        .route("/auth/logout", post(auth::logout))
         .with_state(state)
         .layer(axum::middleware::from_fn(request_id::middleware))
 }
@@ -47,9 +52,16 @@ where
     let local: SocketAddr = listener.local_addr()?;
     tracing::info!(%local, "http listening");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown)
-        .await?;
+    // `into_make_service_with_connect_info` is what puts the peer address into
+    // the request, and the login rate limiter reads it. Without it the handler
+    // still compiles and then fails at runtime on every call — the extractor
+    // finds no `ConnectInfo` extension — so the two must change together.
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await?;
     Ok(())
 }
 

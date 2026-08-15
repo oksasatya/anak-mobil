@@ -18,16 +18,21 @@ workspace = true
 # breaking one.
 anakmobil-domain = { path = "../domain", version = "0.1.0" }
 anyhow = "1.0.104"
+argon2 = "0.5.3"
 axum = "0.8.9"
+base64 = "0.23.1"
 dotenvy = "0.15.7"
+getrandom = "0.4.3"
 # `connection-manager` reconnects on its own; without it a dropped Redis
 # connection stays dropped and readiness never recovers.
 redis = { version = "1.5.0", features = ["tokio-comp", "connection-manager"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
-# No `macros` feature yet: `query!`/`query_as!` need a schema or a committed
-# .sqlx cache, and neither exists until AM-353. Nothing here writes SQL.
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres"] }
+sha2 = "0.11.0"
+# `macros` gives compile-time-checked SQL. It needs either a reachable
+# DATABASE_URL or the committed .sqlx cache; CI uses the cache, which is why
+# `cargo sqlx prepare` runs whenever a query changes.
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "macros", "uuid"] }
 thiserror = "2.0.20"
 time = { version = "0.3.44", features = ["formatting"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "net", "time"] }

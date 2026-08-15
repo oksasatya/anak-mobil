@@ -229,7 +229,9 @@ Foundation only.
 
 `apps/api` serves HTTP. It validates its configuration, logs structurally, applies migrations before it listens, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. The vehicle catalog schema exists; its rows are a separate content project.
 
-There are still **no entities and no business endpoints** — the only routes are the two probes.
+Accounts exist: register, sign in, refresh, sign out, with sessions in Redis so a sign-out takes effect on the next request rather than whenever a token happens to expire.
+
+There are still **no vehicles, no builds, and no service history** — the garage itself is the next thing to build.
 
 `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
 
@@ -239,8 +241,8 @@ Work is tracked in Jira project **AM**. The build order and its reasoning live o
 
 | Next | |
 |---|---|
-| AM-354 | Authentication, Redis sessions, revocation |
 | AM-360 | Garage API — vehicles, catalog, service history |
+| AM-355 | Two roles, and server-side filtering of private vehicle data |
 | AM-341 | The real landing page |
 
 ---

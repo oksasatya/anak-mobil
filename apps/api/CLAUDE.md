@@ -111,6 +111,22 @@ Compile-time macros (`query!`, `query_as!`). Never build SQL with `format!`.
 
 Migrations live in `crates/runtime/migrations/`, not at the workspace root — `sqlx::migrate!()` and `#[sqlx::test]` resolve the path relative to `CARGO_MANIFEST_DIR`.
 
+## Authentication
+
+Sessions live in Redis and tokens are opaque, never JWTs. A signed JWT cannot be revoked, only waited out, so logout would not be an act.
+
+Rules that are easy to undo by accident:
+
+- **Redis stores digests, never tokens.** `token_digest` is the only way a token becomes a key.
+- **`sess:{id}` is the sole authority.** Authenticating requires both the token mapping and the session. Adding a shortcut that trusts the token mapping alone would make logout stop working, silently.
+- **Rotation and session creation are Lua scripts.** Splitting either into separate commands reintroduces a race that mints two live token chains for one session. `tests/session_store.rs` fails against the non-atomic version — that is checked, not assumed.
+- **A replayed refresh revokes every session but does not fence the account.** Fencing would let a stolen token permanently lock out its victim. Only account deletion fences.
+- **Every credential failure returns the same status, code, and message.** Unknown email, wrong password, unparseable stored hash. Splitting them turns login into an account-enumeration oracle.
+- **Login costs one argon2 verification whether or not the account exists.** Returning early on a missing user leaks the same thing through timing.
+- **Never log a token, a digest, or an email on the auth path.** A user id is not a credential and is enough to investigate.
+
+The integration tests need a real Postgres and a real Redis; they skip loudly without `DATABASE_URL` and `REDIS_URL`, and CI always supplies both.
+
 ## Migrations
 
 **One migration per story, not one schema up front.** A table written before a query uses it is usually the wrong shape, and fixing it costs a migration anyway — so the work is not saved, only done when there is least information. Expand-and-contract exists so the schema can grow this way.

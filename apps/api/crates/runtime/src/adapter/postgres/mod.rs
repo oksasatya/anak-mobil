@@ -6,6 +6,7 @@
 //! stories that need them, each bringing its own migration.
 
 pub mod migrate;
+pub mod user_repo;
 
 use std::time::Duration;
 
