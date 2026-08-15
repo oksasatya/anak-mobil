@@ -67,6 +67,30 @@ Node is not required. Bun runs the Astro build and the `node:test` suites in `pa
 
 **One exception is expected, and it is not a failure of this decision.** `apps/mobile` will use Expo, which is the slowest part of the JavaScript ecosystem to accommodate Bun — `bun install` generally works, but Metro and parts of the Expo CLI have historically assumed npm or yarn. If that bites, the answer is that **`apps/mobile` alone** uses a different package manager, not that the repository reverts. Verify before scaffolding it rather than assuming either way.
 
+### No task runner, and what would change that
+
+There is no Turborepo, Nx, or equivalent, and adding one now would be worse than not having one. Measured 2026-08-15:
+
+```
+tokens  build       42 ms
+landing build    1,676 ms      total JS ≈ 1.7 s
+cargo build     17,706 ms      incremental, no changes
+```
+
+Three reasons, in order of weight. **A task runner cannot touch Cargo**, and Rust is the slow half — CI already runs 1m45s for the backend gate against 15s for the frontend. **The cache has almost nothing to cache**: three JavaScript workspaces, not twenty. And **"only run what is affected" already exists**, one layer up, in the workflow path filters — a backend commit does not trigger the frontend job at all.
+
+Remote caching also assumes a team. Its pitch is that a colleague's build warms your CI; there is one developer.
+
+**Revisit when any one of these is true**, not when the repository merely feels large:
+
+- `packages/tokens` has three or more consumers **and** the build order can no longer be stated honestly as Make dependencies;
+- the `frontend` CI job passes ~90 seconds;
+- one token change forces four or more downstream packages to rebuild on every pull request.
+
+The first is the one to watch. What breaks first is not speed but **ordering** — `fe-build: ds-build` is a single honest line today because tokens has one consumer, and it stops being honest once `landing`, `backoffice`, and `mobile` all consume tokens while two of them also consume generated `api-types`. A task graph earns its place there, before it earns it on time saved.
+
+Projected full scope is six JavaScript workspaces, five with builds. That is still below where a task runner's cache pays for its configuration, so expect the ordering trigger to fire before the timing ones.
+
 ## Branching
 
 ```
