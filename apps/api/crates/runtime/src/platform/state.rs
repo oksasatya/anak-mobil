@@ -13,8 +13,15 @@
 use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 
+use crate::adapter::redis::rate_limit::RateLimiter;
+use crate::adapter::redis::session::SessionStore;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    /// Kept for the readiness probe, which checks the connection itself
+    /// rather than anything built on it.
     pub redis: ConnectionManager,
+    pub sessions: SessionStore,
+    pub limiter: RateLimiter,
 }

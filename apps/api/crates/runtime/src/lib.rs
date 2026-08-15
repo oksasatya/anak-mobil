@@ -152,6 +152,8 @@ async fn run_web(config: &Config) -> anyhow::Result<()> {
     let state = AppState {
         pool: pool.clone(),
         redis: redis.clone(),
+        sessions: adapter::redis::session::SessionStore::new(redis.clone()),
+        limiter: adapter::redis::rate_limit::RateLimiter::new(redis.clone()),
     };
     let router = adapter::http::router(state);
 

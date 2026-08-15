@@ -40,6 +40,10 @@ Two routes. There is no schema, no authentication, and no business endpoint yet.
 |---|---|---|
 | `GET /healthz` | always `200` | nothing — no I/O at all |
 | `GET /readyz` | `200` or `503` | Postgres and Redis, concurrently, 2s each |
+| `POST /auth/register` | `201` | email is free, password ≥ 8 characters |
+| `POST /auth/login` | `200` | rate limit, then argon2id |
+| `POST /auth/refresh` | `200` | rotates, and detects a replay |
+| `POST /auth/logout` | `200` | ends that session only |
 
 ```bash
 curl -i localhost:8080/readyz
@@ -52,6 +56,29 @@ curl -i localhost:8080/readyz
 These two answer different questions, and conflating them is how you build a probe that cannot fail. Liveness asks whether the process is alive — a database being down is not a reason to restart it, because restarting will not bring the database back. Readiness asks whether *this instance* can serve, and Redis holds sessions, so an instance that cannot reach it cannot authenticate anyone.
 
 Both answer flat JSON, deliberately outside the response envelope below. A load balancer is not an API client.
+
+## Authentication
+
+Both tokens are **opaque random strings**, not JWTs, and every authenticated request costs one Redis lookup. That is the price of the requirement: a signed JWT cannot be revoked, only waited out, so logout would be a gesture rather than an act.
+
+```
+access   1 hour    process memory on the client
+refresh  90 days   Keychain / Keystore, behind biometrics
+```
+
+Two tokens even though both are opaque, because they are **stored differently on the device**. Someone who reads app memory gets an hour, not three months.
+
+Redis stores a SHA-256 of each token and never the token. A dump, a stray `KEYS *`, or a misconfigured replica yields values that cannot be presented as credentials. SHA-256 rather than argon2 because the input is already 256 bits of CSPRNG output — there is nothing to slow an attacker down about, and this runs on every request.
+
+**`sess:{id}` is the only authority.** Authenticating needs the token mapping *and* the session; revoking is one `DEL`, and orphaned token keys expire on their own.
+
+**Rotation is a Lua script**, because it must be atomic. Two refreshes arriving together on separate commands can both consume the same token and mint two live chains for one session — one theft becoming two independent logins. There is a test that fails against the non-atomic version.
+
+**A replayed refresh token revokes every session on the account** and does *not* fence it: the owner must be able to sign in again, or a stolen token becomes a permanent lockout of the victim. Account deletion is the case that does fence.
+
+**Login answers identically** for an unknown email and a wrong password, down to the status and the error code, and burns one argon2 verification against a decoy hash when no account exists. Otherwise response timing alone tells an attacker which addresses are registered.
+
+**Login is rate limited here** rather than in the general rate-limiting story. Argon2 costs 19 MiB and real CPU per attempt, so an unthrottled login endpoint is a cheap denial of service as well as a guessing machine — the hashing that protects stored passwords is what makes the endpoint expensive to serve.
 
 ## A request, end to end
 
