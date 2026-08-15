@@ -44,6 +44,12 @@ Two routes. There is no schema, no authentication, and no business endpoint yet.
 | `POST /auth/login` | `200` | rate limit, then argon2id |
 | `POST /auth/refresh` | `200` | rotates, and detects a replay |
 | `POST /auth/logout` | `200` | ends that session only |
+| `GET /vehicles` | `200` | the caller's cars, in their order |
+| `POST /vehicles` | `201` | catalog match or a description |
+| `GET /vehicles/{id}` | `200` | ownership |
+| `PUT /vehicles/{id}` | `204` | ownership |
+| `DELETE /vehicles/{id}` | `204` | ownership |
+| `PUT /vehicles/order` | `204` | every listed car is the caller's |
 
 ```bash
 curl -i localhost:8080/readyz
@@ -79,6 +85,20 @@ Redis stores a SHA-256 of each token and never the token. A dump, a stray `KEYS 
 **Login answers identically** for an unknown email and a wrong password, down to the status and the error code, and burns one argon2 verification against a decoy hash when no account exists. Otherwise response timing alone tells an attacker which addresses are registered.
 
 **Login is rate limited here** rather than in the general rate-limiting story. Argon2 costs 19 MiB and real CPU per attempt, so an unthrottled login endpoint is a cheap denial of service as well as a guessing machine — the hashing that protects stored passwords is what makes the endpoint expensive to serve.
+
+## Private vehicle data
+
+Plate, VIN, and purchase price live in `vehicle_private`, a separate table, and reach exactly one endpoint: the detail of a car, for the person who owns it.
+
+The split is the enforcement. A filtered `SELECT` protects those columns until the first query that forgets one, and a leaked plate cannot be recalled — so they are not in the row a query returns by default. `SELECT * FROM vehicles` cannot leak a plate because there is no plate in `vehicles`.
+
+The same shape repeats in the types: `VehicleResponse` has no field for a plate. Not a skipped field, not an `Option` that happens to be `None` — no field. Adding private data to a list response would require changing a type signature, which a reviewer sees. A test asserts the serialised shape carries none of those keys.
+
+**"Not yours" and "does not exist" answer identically.** Both are `404`, so an id cannot be probed for existence.
+
+**A car can exist without a catalog match.** Somebody whose model is missing must still be able to add their car, or the suggest-a-model flow has nothing to attach to and the catalog can only ever describe cars that were already enterable.
+
+**Money crosses the wire as a decimal string.** JSON numbers are doubles in most clients, and the scale is pinned rather than inherited — a `BigDecimal` round trip otherwise renders 185000000.50 as `185000000.5000`, the same number in a different shape that every client would have to normalise.
 
 ## A request, end to end
 

@@ -7,6 +7,7 @@
 
 pub mod migrate;
 pub mod user_repo;
+pub mod vehicle_repo;
 
 use std::time::Duration;
 

@@ -1,0 +1,119 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            v.id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.year,\n            v.colour,\n            v.mileage_km,\n            v.position,\n            CASE WHEN va.id IS NULL THEN NULL\n                 ELSE b.name || ' ' || m.name || ' ' || va.name\n            END AS catalog_name\n        FROM vehicles v\n        LEFT JOIN vehicle_variants va    ON va.id = v.variant_id\n        LEFT JOIN vehicle_generations g  ON g.id = va.generation_id\n        LEFT JOIN vehicle_models m       ON m.id = g.model_id\n        LEFT JOIN brands b               ON b.id = m.brand_id\n        WHERE v.owner_id = $1\n        ORDER BY v.position, v.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "variant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "variant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "nickname",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "nickname"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "described_as",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "described_as"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "year",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "year"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "colour",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "colour"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "mileage_km",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "mileage_km"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "position",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "position"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "catalog_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      null
+    ]
+  },
+  "hash": "96bf1708759365be0981ad7c839ffc20a8649b61b4352484903542dadd163d92"
+}

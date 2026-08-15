@@ -231,7 +231,9 @@ Foundation only.
 
 Accounts exist: register, sign in, refresh, sign out, with sessions in Redis so a sign-out takes effect on the next request rather than whenever a token happens to expire.
 
-There are still **no vehicles, no builds, and no service history** — the garage itself is the next thing to build.
+Vehicles exist: add, edit, delete, reorder, with plate, VIN, and purchase price held in a separate table so a query cannot return them by accident.
+
+There is still **no service history, no builds, and no catalog browsing** — the rest of AM-360, split into slices.
 
 `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
 
@@ -241,8 +243,8 @@ Work is tracked in Jira project **AM**. The build order and its reasoning live o
 
 | Next | |
 |---|---|
-| AM-360 | Garage API — vehicles, catalog, service history |
-| AM-355 | Two roles, and server-side filtering of private vehicle data |
+| AM-360 | Catalog browsing and model suggestions (slice 2) |
+| AM-360 | Service history with cost privacy (slice 3) |
 | AM-341 | The real landing page |
 
 ---

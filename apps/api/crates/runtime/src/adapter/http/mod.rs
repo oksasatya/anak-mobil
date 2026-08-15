@@ -3,12 +3,13 @@
 pub mod auth;
 pub mod probe;
 pub mod request_id;
+pub mod vehicles;
 
 use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::Router;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use tokio::net::TcpListener;
 
 use crate::platform::state::AppState;
@@ -34,6 +35,17 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/logout", post(auth::logout))
+        // `/vehicles/order` is declared before `/vehicles/{id}` so the literal
+        // wins; otherwise "order" is parsed as a vehicle id and every reorder
+        // is a 400.
+        .route("/vehicles/order", put(vehicles::reorder))
+        .route("/vehicles", get(vehicles::list).post(vehicles::create))
+        .route(
+            "/vehicles/{id}",
+            get(vehicles::detail)
+                .put(vehicles::update)
+                .delete(vehicles::delete),
+        )
         .with_state(state)
         .layer(axum::middleware::from_fn(request_id::middleware))
 }
