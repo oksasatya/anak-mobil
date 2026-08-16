@@ -157,13 +157,36 @@ Three surfaces, one palette. Change the orange once and all three move; there is
 
 ## Getting started
 
-Requires Rust 1.96+ and [Bun](https://bun.sh) 1.3+, plus Docker for Postgres and Redis.
+Requires Rust 1.96+, [Bun](https://bun.sh) 1.3+, and Docker.
 
 ```bash
 bun install
-cp apps/api/.env.example apps/api/.env
+cp .env.example .env
+make db-up         # Postgres with pgvector, on :55432
 make check         # every gate in the repository
 ```
+
+**Only Postgres comes from Docker, and only because of pgvector** — a stock
+install does not carry the extension. Redis is assumed to be running on your
+machine already; if it is not, `make db-up-all` starts one in a container on
+the same port, so `REDIS_URL` never changes either way.
+
+Postgres publishes on **55432**, not 5432, because a Homebrew postgres is
+commonly already listening there. Pointing at that one instead does not fail
+cleanly — it is a real server with the wrong database and no pgvector.
+
+```bash
+make db-up-all     # also start Redis, for a machine without one
+make db-psql       # a psql shell on the development database
+make db-down       # stop, keeping the data
+make db-reset      # stop, DELETE the data, start clean
+```
+
+The `Makefile` loads `.env` and exports it to every recipe. That is not
+convenience: the integration tests return early and report **passing** when
+`DATABASE_URL` and `REDIS_URL` are absent, so a shell without them produces a
+full green board that executed nothing. Loading them here is what makes
+`make be-test` mean what it says.
 
 Individually:
 

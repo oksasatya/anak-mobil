@@ -158,7 +158,11 @@ Rules that are easy to undo by accident:
 - **Login costs one argon2 verification whether or not the account exists.** Returning early on a missing user leaks the same thing through timing.
 - **Never log a token, a digest, or an email on the auth path.** A user id is not a credential and is enough to investigate.
 
-The integration tests need a real Postgres and a real Redis; they skip loudly without `DATABASE_URL` and `REDIS_URL`, and CI always supplies both.
+The integration tests need a real Postgres and a real Redis.
+
+**They do NOT skip loudly, and this sentence used to claim they did.** Without `DATABASE_URL` and `REDIS_URL` the `app!` macro returns early and every test reports `ok` — and the word `SKIPPED` never reaches cargo's output, because cargo captures stderr for passing tests. Measured: 13 tests "pass" having executed nothing.
+
+Two things stand between that and a false green. `make be-test` loads `.env` from the repository root and exports it, so the normal path always has both URLs; and CI supplies them directly. Neither helps somebody running a bare `cargo test`, which is why making the skip fail loudly is an open finding rather than a solved problem.
 
 ## Migrations
 
