@@ -178,6 +178,10 @@ Migrations run automatically at the start of the **web** role, before the listen
 
 **A migration that has been applied is never edited.** sqlx stores a checksum and refuses to continue when it changes, because two databases would otherwise carry the same version number and different schemas. Fix a mistake with a new migration.
 
+**One boundary, and it is narrow enough to check.** That rule exists to prevent divergence *between databases*. A migration still on an unmerged branch, applied only to your own throwaway development database, has no other copy to diverge from — so it may be amended in place, followed by `make db-drop` to rebuild from the amended file. Both conditions are required: **not merged**, and **you reset your own database**. The moment it reaches `dev`, the rule is absolute again.
+
+Use it for a mistake found hours after writing, where three corrective migrations against a table created the same afternoon would read as three errors rather than one correct schema. Do not use it to avoid writing a down migration, and never for a migration somebody else may have run.
+
 ### Expand, then contract
 
 A deploy has both versions running at once, so a schema change must be readable by the old code:

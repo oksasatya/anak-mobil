@@ -92,15 +92,38 @@ CREATE TABLE modifications (
 -- Every foreign key gets an index. These two carry slice 3's batched reads:
 -- WHERE build_id = ANY($1) is an index scan with them and a sequential scan
 -- without, which is AC5 failing on the index rather than on the query count.
-CREATE INDEX builds_vehicle_idx        ON builds (vehicle_id);
+-- No index on builds.vehicle_id: the UNIQUE constraint already built one, and
+-- a second btree on the same column is maintained on every write and chosen by
+-- nothing. The rule is that Postgres never indexes a foreign key — a foreign
+-- key that is ALSO unique is the exception, and this is it.
 CREATE INDEX build_photos_build_idx    ON build_photos (build_id, position, id);
-CREATE INDEX modifications_build_idx   ON modifications (build_id, id);
+
+-- The sort is in the key on purpose. `modifications_for` orders by
+-- (build_id, install_date DESC NULLS LAST, id); leaving install_date out makes
+-- the planner add an Incremental Sort on top of the scan, which is cheap per
+-- build and free to avoid at creation. `service_records_timeline_idx` is the
+-- same shape solved the same way.
+CREATE INDEX modifications_build_idx   ON modifications (build_id, install_date DESC NULLS LAST, id);
 
 -- "Which builds use this part" — the query behind both evidence counts.
 CREATE INDEX modifications_part_idx    ON modifications (part_id);
 
--- The community-facing list: public and community builds, newest first.
-CREATE INDEX builds_visible_idx ON builds (visibility, id DESC)
+-- The community-facing list: everything not private, newest first.
+--
+-- `visibility` is in the PREDICATE and deliberately not in the KEY. A btree
+-- sorts by its first column, so (visibility, id DESC) yields "all community by
+-- id, then all public by id" — two runs, not one descending stream, and
+-- merging them costs a full sort no LIMIT can stop early. Measured: the
+-- planner declines that index entirely and takes a backward pkey scan.
+--
+-- With `visibility` demoted to the predicate, index order IS query order.
+--
+-- Stated honestly rather than overclaimed: the list also ORs in the caller's
+-- own private builds, and `owner_id` lives on `vehicles`, so no index on
+-- `builds` alone can serve that whole predicate. Do not write a complexity
+-- comment claiming otherwise. When the feed is slow enough to matter, the fix
+-- is a UNION ALL of "visible" and "mine", not another index here.
+CREATE INDEX builds_visible_idx ON builds (id DESC)
     WHERE visibility <> 'private';
 
 CREATE TRIGGER builds_set_updated_at

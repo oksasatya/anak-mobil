@@ -8,6 +8,7 @@
 //! Repositories arrive with the stories that need them, each bringing its own
 //! migration.
 
+pub mod build_repo;
 pub mod catalog_repo;
 pub mod migrate;
 pub mod part_repo;

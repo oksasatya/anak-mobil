@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO builds (id, vehicle_id)\n        SELECT $1, v.id\n        FROM vehicles v\n        WHERE v.id = $3 AND v.owner_id = $2\n        ON CONFLICT (vehicle_id) DO UPDATE\n            SET vehicle_id = EXCLUDED.vehicle_id\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0235b01680369c169a651cf8341d2914fc12bfe328f6f68509b57c1408b4c6ea"
+}
