@@ -128,6 +128,30 @@ gh pr create --base dev --title "…" --body "…"
 
 **Merge with a merge commit, not a squash**, when the individual commits were built to be readable. Squashing collapses work that was deliberately sequenced.
 
+## Working a Jira ticket
+
+Every ticket runs the same sequence. No step is skipped, and none of them starts before the one before it finished.
+
+```
+brainstorming  →  spec + plan on disk  →  executing-plans-hybrid
+                                              ↓
+                        separate commits  →  PR into dev  →  merge
+```
+
+**1. `superpowers:brainstorming` first, before any code.** Not after a design has already formed in the writing. The skill classifies the work itself — a spike, a bounded change, or something architectural — and the ceremony scales to that classification. What does not scale is the approval: nothing is implemented until the design has been shown and agreed, however short that design is.
+
+**2. A spec and a plan, written to disk.** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` for the spec, and the plan beside it. On disk rather than in the conversation, because a conversation is lost to compaction and the next session needs to know what was decided and why.
+
+**3. `executing-plans-hybrid` runs the plan.** It carries the per-task verdicts the plan wrote down — what is tested first, what is verified by running it, where the risk sits.
+
+**4. Separate commits, each one building.** One logical change per commit. A commit that does not compile makes `git bisect` useless, which is most of the reason to split them; where ordering makes that awkward, write the intermediate version rather than shipping a broken commit.
+
+**5. A pull request into `dev`, never into `main`.** `gh pr create --base dev` — the base is not the default, so it is passed explicitly or the PR silently targets the release branch.
+
+**6. Merge once CI is green.** Watched to green, not assumed. A red run is not done.
+
+**A ticket too large for one pass is split, and the split is said out loud.** AM-360 arrived carrying two mobile epics plus the catalog — four tables and eighteen endpoints. Attempting that in one pass produces a pull request nobody can review and rushes whichever part of it carries the most risk. Slice it in dependency order, ship each slice through the full sequence above, and leave the ticket open until the last one lands.
+
 ## Working here
 
 **Verify, do not assert.** Run the gate and read its output. "It compiles" is the floor. A summary of what you expect a command to print is not evidence it printed that.
