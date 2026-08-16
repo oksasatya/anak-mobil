@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH asked AS (\n            SELECT unnest($1::uuid[]) AS part_id\n        ),\n        canonical AS (\n            -- The canonical form of each part asked about, and of every part\n            -- merged into it. One hop: canonical_part_id is a cache the merge\n            -- use case keeps flat, never a chain.\n            SELECT a.part_id AS asked_id,\n                   p.id      AS member_id\n            FROM asked a\n            JOIN parts root ON root.id = a.part_id\n            JOIN parts p\n              ON p.id = COALESCE(root.canonical_part_id, root.id)\n              OR p.canonical_part_id = COALESCE(root.canonical_part_id, root.id)\n        )\n        SELECT\n            c.asked_id AS \"part_id!\",\n            COUNT(DISTINCT v.id) FILTER (WHERE m.removed_at IS NULL) AS \"active_build_count!\",\n            COUNT(DISTINCT v.id)                                     AS \"ever_installed_build_count!\"\n        FROM canonical c\n        LEFT JOIN modifications m ON m.part_id = c.member_id\n        LEFT JOIN builds b        ON b.id = m.build_id\n        LEFT JOIN vehicles v      ON v.id = b.vehicle_id\n                                 AND (b.visibility <> 'private' OR v.owner_id = $2)\n                                 AND ($3::uuid IS NULL OR v.variant_id = $3)\n        GROUP BY c.asked_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "part_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "active_build_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "ever_installed_build_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "3efea2b3182fe1e5fd0742a32d1fad605e64b5f10e2eefcfc9a014c49dc7e08c"
+}

@@ -382,3 +382,220 @@ pub async fn modifications_for(
     .fetch_all(conn)
     .await
 }
+
+/// One row of [`page_visible`] — a build plus the vehicle fields its caller
+/// needs without a second round trip: who owns it, what variant it is (for
+/// the evidence-count filter), and both visibility settings.
+#[derive(Debug, Clone)]
+pub struct BuildRow {
+    pub id: Uuid,
+    pub vehicle_id: Uuid,
+    pub notes: Option<String>,
+    pub visibility: Visibility,
+    pub owner_id: Uuid,
+    pub variant_id: Option<Uuid>,
+    pub nickname: Option<String>,
+    pub described_as: Option<String>,
+    /// Who may see this car's cost. Carried here so the response mapping can
+    /// null out a modification's `cost` without a second query — the filter
+    /// itself lives at the boundary that renders `Modification` into a
+    /// response, not here.
+    pub cost_visibility: Visibility,
+}
+
+/// One row of [`photos_for`].
+#[derive(Debug, Clone)]
+pub struct BuildPhoto {
+    pub id: Uuid,
+    pub build_id: Uuid,
+    pub object_key: String,
+    pub position: i32,
+}
+
+/// One row of [`evidence_counts`] — both counts, for one part.
+#[derive(Debug, Clone)]
+pub struct EvidenceCount {
+    pub part_id: Uuid,
+    pub active_build_count: i64,
+    pub ever_installed_build_count: i64,
+}
+
+/// One page of builds this viewer may see, newest first.
+///
+/// A plain id cursor, unlike the service timeline's compound one. A build id
+/// is a UUID v7 and therefore time-sortable, and unlike a service date it is
+/// not user-supplied — so there is no case where a row is inserted into the
+/// middle of the order, which is the failure the compound cursor exists for.
+///
+/// Complexity: NOT `O(log n + limit)`. Measured at 50k builds, 98% private:
+/// the planner declines `builds_visible_idx` for this predicate and walks
+/// `builds_pkey` backwards — 601 rows and 2419 buffers to return 21. Deep into
+/// a cursor with a viewer who owns nothing, it degrades to a `Seq Scan` over
+/// `vehicles` plus a blocking sort.
+///
+/// The cause is `OR v.owner_id = $1`: half the predicate lives on another
+/// table, and a partial index holding only non-private builds is not a
+/// superset of what the query needs — the viewer's own private builds are
+/// missing from it. No index on `builds` alone can fix that.
+///
+/// The fix, when the feed is slow enough to matter, is a `UNION ALL` of
+/// "visible" and "mine". Do not add another index here, and do not restore a
+/// complexity claim the planner does not deliver.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn page_visible(
+    conn: &mut PgConnection,
+    viewer_id: Uuid,
+    after: Option<Uuid>,
+    limit: u16,
+) -> Result<Vec<BuildRow>, sqlx::Error> {
+    sqlx::query_as!(
+        BuildRow,
+        r#"
+        SELECT
+            b.id,
+            b.vehicle_id,
+            b.notes,
+            b.visibility AS "visibility: Visibility",
+            v.owner_id,
+            v.variant_id,
+            v.nickname,
+            v.described_as,
+            v.cost_visibility AS "cost_visibility: Visibility"
+        FROM builds b
+        JOIN vehicles v ON v.id = b.vehicle_id
+        WHERE (b.visibility <> 'private' OR v.owner_id = $1)
+          AND ($2::uuid IS NULL OR b.id < $2)
+        ORDER BY b.id DESC
+        LIMIT $3
+        "#,
+        viewer_id,
+        after,
+        i64::from(limit) + 1,
+    )
+    .fetch_all(conn)
+    .await
+}
+
+/// Every photo on these builds, in one query.
+///
+/// A third query rather than a third join. Joining builds × modifications ×
+/// photos multiplies rows — one build with 10 modifications and 20 photos
+/// returns 200 — and the multiplier grows per build. Fetching photos per build
+/// instead is the N+1 AC5 forbids. Three batched queries are a constant number
+/// of round trips and `O(B + M + P)` in memory.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn photos_for(
+    conn: &mut PgConnection,
+    build_ids: &[Uuid],
+) -> Result<Vec<BuildPhoto>, sqlx::Error> {
+    sqlx::query_as!(
+        BuildPhoto,
+        r#"
+        SELECT id, build_id, object_key, position
+        FROM build_photos
+        WHERE build_id = ANY($1)
+        ORDER BY build_id, position, id
+        "#,
+        build_ids,
+    )
+    .fetch_all(conn)
+    .await
+}
+
+/// Both community-evidence counts, for every part on a page, in one query.
+///
+/// **Two counts, each named for what it counts.** `active_build_count` is
+/// builds where the part is currently fitted; `ever_installed_build_count`
+/// includes those where it was removed, because a removed modification is
+/// still evidence that the part fitted. Calling either of them just "evidence
+/// count" is how the wrong one ends up on a screen.
+///
+/// Grouped by the canonical part, so a build that referenced two now-merged
+/// parts counts once rather than twice — and the grouping key is what makes
+/// AC4's "the counts combine rather than disappear" true without rewriting
+/// `modifications.part_id`.
+///
+/// Filtered on the reader's visibility and, when given, on the vehicle's
+/// variant. An Avanza build whose vehicle was never matched to a catalog
+/// variant is not evidence about a Civic; `variant_id` is nullable precisely
+/// because free-text cars exist, and a NULL variant matches no filter rather
+/// than every filter.
+///
+/// A part with no builds gets a row of two zeros rather than no row. A client
+/// that has to special-case an absent count will get it wrong on the empty
+/// catalog, which is the state this platform launches in.
+///
+/// Complexity: `O(k + m)` for `k` part ids and `m` matching modifications, one
+/// query for the whole page. The version of this that takes a single part id
+/// is the N+1 — do not add it.
+///
+/// **An eighth thing the plan got wrong, caught while writing this rather
+/// than measured after:** the drafted query counted `DISTINCT b.id`, but
+/// `b` (`builds`) is joined unconditionally on `m.build_id` — the visibility
+/// and variant predicate lives entirely on the `vehicles` join below it.
+/// `b.id` is therefore non-NULL whether or not the build is visible, so
+/// `COUNT(DISTINCT b.id)` silently ignores the filter and counts every
+/// matching modification's build regardless of who is asking. Counting
+/// `DISTINCT v.id` instead is the fix: `v` only joins when the visibility
+/// *and* variant predicate holds (its ON clause carries both, exactly as
+/// intended), so a filtered-out row leaves `v.id` NULL and `COUNT` — which
+/// ignores NULLs — drops it. `builds.vehicle_id` is `UNIQUE`, so a build and
+/// its vehicle are a bijection and `COUNT(DISTINCT v.id)` counts the same
+/// set of builds `COUNT(DISTINCT b.id)` was meant to, correctly gated this
+/// time. This is exactly the class of bug the ON-vs-WHERE note above warns
+/// about: it does not show up as a compile error, and it does not show up
+/// in a naive integration test either unless that test asserts a *private*
+/// build is excluded from another viewer's count — Task 3.3's job.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn evidence_counts(
+    conn: &mut PgConnection,
+    part_ids: &[Uuid],
+    viewer_id: Uuid,
+    variant_id: Option<Uuid>,
+) -> Result<Vec<EvidenceCount>, sqlx::Error> {
+    sqlx::query_as!(
+        EvidenceCount,
+        r#"
+        WITH asked AS (
+            SELECT unnest($1::uuid[]) AS part_id
+        ),
+        canonical AS (
+            -- The canonical form of each part asked about, and of every part
+            -- merged into it. One hop: canonical_part_id is a cache the merge
+            -- use case keeps flat, never a chain.
+            SELECT a.part_id AS asked_id,
+                   p.id      AS member_id
+            FROM asked a
+            JOIN parts root ON root.id = a.part_id
+            JOIN parts p
+              ON p.id = COALESCE(root.canonical_part_id, root.id)
+              OR p.canonical_part_id = COALESCE(root.canonical_part_id, root.id)
+        )
+        SELECT
+            c.asked_id AS "part_id!",
+            COUNT(DISTINCT v.id) FILTER (WHERE m.removed_at IS NULL) AS "active_build_count!",
+            COUNT(DISTINCT v.id)                                     AS "ever_installed_build_count!"
+        FROM canonical c
+        LEFT JOIN modifications m ON m.part_id = c.member_id
+        LEFT JOIN builds b        ON b.id = m.build_id
+        LEFT JOIN vehicles v      ON v.id = b.vehicle_id
+                                 AND (b.visibility <> 'private' OR v.owner_id = $2)
+                                 AND ($3::uuid IS NULL OR v.variant_id = $3)
+        GROUP BY c.asked_id
+        "#,
+        part_ids,
+        viewer_id,
+        variant_id,
+    )
+    .fetch_all(conn)
+    .await
+}
