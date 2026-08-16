@@ -354,7 +354,7 @@ pub async fn suggest(
 pub(super) fn to_api_error(err: PartError) -> ApiError {
     match err {
         PartError::NotFound => ApiError::not_found(),
-        PartError::TooManyParts => ApiError::too_many_requests(),
+        PartError::TooManyParts => ApiError::parts_daily_limit(),
         PartError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),
     }
 }

@@ -472,7 +472,7 @@ pub async fn remove_modification(
 fn to_api_error(err: BuildError) -> ApiError {
     match err {
         BuildError::NotFound => ApiError::not_found(),
-        BuildError::TooManyParts => ApiError::too_many_requests(),
+        BuildError::TooManyParts => ApiError::parts_daily_limit(),
         // A foreign key violation here means the caller named a `part_id` that
         // does not exist — a well-formed but stale UUID, which is an ordinary
         // thing for a client holding an old list. Postgres 23503 reaching the
