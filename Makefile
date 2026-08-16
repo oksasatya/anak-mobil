@@ -61,6 +61,30 @@ db-reset: ## Stop and DELETE the database volume, then start clean
 	docker compose --profile redis down -v
 	$(MAKE) db-up
 
+db-drop: ## Drop and recreate the database, then migrate — faster than db-reset
+	@docker compose exec -T postgres psql -U postgres -q \
+		-c 'DROP DATABASE IF EXISTS anakmobil WITH (FORCE)' -c 'CREATE DATABASE anakmobil'
+	@$(MAKE) --no-print-directory be-migrate
+	@echo 'empty. `make db-seed` adds the starter catalog.'
+
+# Reference data only, and that distinction is the point.
+#
+# The repository rule is that nothing is seeded with fake data: no invented
+# community counts, no fabricated activity, because the platform launches
+# empty and the low-data state is designed as a primary experience rather
+# than a fallback. A catalog of cars that genuinely exist is not that — it is
+# reference data, and `POST /catalog/suggestions` already exists for the cars
+# it is missing.
+#
+# So there is no `db-seed-users` and no fixture garage. Nothing here creates a
+# person, a vehicle, a build, or a service record. Develop against the empty
+# state, because that is what the first real user sees.
+db-seed: ## Load the starter vehicle catalog — real cars only, no fabricated activity
+	@test "$${APP_ENV:-development}" = development \
+		|| { echo 'refusing: APP_ENV is $(APP_ENV), not development'; exit 1; }
+	@docker compose exec -T postgres psql -U postgres -d anakmobil -q -v ON_ERROR_STOP=1 \
+		< $(API)/seeds/catalog.sql
+
 db-psql: ## Open a psql shell on the development database
 	docker compose exec postgres psql -U postgres -d anakmobil
 
