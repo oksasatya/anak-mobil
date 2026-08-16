@@ -56,6 +56,7 @@ pub fn router(state: AppState) -> Router {
         .route("/vehicles/order", put(vehicles::reorder))
         .route("/vehicles", get(vehicles::list).post(vehicles::create))
         .route("/vehicles/{id}/summary", get(summary::vehicle))
+        .route("/builds", get(builds::list))
         .route(
             "/vehicles/{id}/build",
             get(builds::detail).put(builds::save),

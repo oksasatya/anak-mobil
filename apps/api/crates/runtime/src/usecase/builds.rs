@@ -3,13 +3,16 @@
 //! One build per car, so it is addressed through the vehicle for writes and by
 //! its own id for reads.
 
+use std::collections::HashMap;
+
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::adapter::postgres::build_repo::{
-    self, Build, BuildInput, Modification, ModificationInput,
+    self, Build, BuildInput, BuildPhoto, BuildRow, Modification, ModificationInput,
 };
 use crate::adapter::postgres::part_repo::{self, PartInput};
+use crate::shared::pagination::Page;
 use crate::usecase::parts;
 
 /// Why a build operation did not succeed.
@@ -74,6 +77,78 @@ pub async fn for_vehicle(
     let modifications = build_repo::modifications_for(&mut conn, &[build.id]).await?;
 
     Ok((build, modifications))
+}
+
+/// One build, plus everything [`page`] fetched about it: its modifications
+/// and its photos.
+#[derive(Debug, Clone)]
+pub struct BuildDetail {
+    pub build: BuildRow,
+    pub modifications: Vec<Modification>,
+    pub photos: Vec<BuildPhoto>,
+}
+
+/// One page of builds this person may see.
+///
+/// Three queries, whatever the number of builds: the page, then every
+/// modification on it, then every photo on it. The grouping below is one pass
+/// over each result set into a `HashMap`; a `.iter().find()` inside the build
+/// loop would be `O(B × M)` and would look exactly like this code does.
+///
+/// Complexity: `O(B + M + P)` time and memory, three round trips.
+///
+/// # Errors
+///
+/// [`BuildError::Database`] when a query fails.
+pub async fn page(
+    pool: &PgPool,
+    viewer_id: Uuid,
+    after: Option<Uuid>,
+    limit: u16,
+) -> Result<Page<BuildDetail>, BuildError> {
+    let mut conn = pool.acquire().await?;
+
+    let mut rows = build_repo::page_visible(&mut conn, viewer_id, after, limit).await?;
+    let has_more = rows.len() > usize::from(limit);
+    rows.truncate(usize::from(limit));
+
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let modifications = build_repo::modifications_for(&mut conn, &ids).await?;
+    let photos = build_repo::photos_for(&mut conn, &ids).await?;
+
+    let mut by_build: HashMap<Uuid, Vec<Modification>> = HashMap::new();
+    for modification in modifications {
+        by_build
+            .entry(modification.build_id)
+            .or_default()
+            .push(modification);
+    }
+    let mut photos_by_build: HashMap<Uuid, Vec<BuildPhoto>> = HashMap::new();
+    for photo in photos {
+        photos_by_build
+            .entry(photo.build_id)
+            .or_default()
+            .push(photo);
+    }
+
+    let next_cursor = has_more
+        .then(|| rows.last())
+        .flatten()
+        .map(|last| last.id.to_string());
+
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let id = row.id;
+            BuildDetail {
+                modifications: by_build.remove(&id).unwrap_or_default(),
+                photos: photos_by_build.remove(&id).unwrap_or_default(),
+                build: row,
+            }
+        })
+        .collect();
+
+    Ok(Page { items, next_cursor })
 }
 
 /// What part a modification is about: one already in the catalog, or one the
