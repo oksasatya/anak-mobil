@@ -34,7 +34,7 @@ docker run -d --name am-redis -p 6379:6379 redis:7-alpine
 
 ## What answers today
 
-Accounts, the caller's own cars, and the catalog. Builds, service history, and
+Accounts, the caller's own cars, the catalog, and service history. Builds and
 everything AI are not built yet.
 
 | Route | Answers | Checks |
@@ -45,12 +45,18 @@ everything AI are not built yet.
 | `POST /auth/login` | `200` | rate limit, then argon2id |
 | `POST /auth/refresh` | `200` | rotates, and detects a replay |
 | `POST /auth/logout` | `200` | ends that session only |
-| `GET /vehicles` | `200` | the caller's cars, in their order |
+| `GET /vehicles` | `200` | the caller's cars, in their order, each with a summary |
 | `POST /vehicles` | `201` | catalog match or a description |
 | `GET /vehicles/{id}` | `200` | ownership |
 | `PUT /vehicles/{id}` | `204` | ownership |
 | `DELETE /vehicles/{id}` | `204` | ownership |
 | `PUT /vehicles/order` | `204` | every listed car is the caller's |
+| `GET /vehicles/{id}/summary` | `200` | ownership — spend, and what the car is due for |
+| `GET /vehicles/{id}/services` | `200` | ownership, cursor paged, newest first |
+| `POST /vehicles/{id}/services` | `201` | ownership, date not in the future, cost not negative |
+| `GET /services/{id}` | `200` | ownership |
+| `PUT /services/{id}` | `204` | ownership |
+| `DELETE /services/{id}` | `204` | ownership |
 | `GET /catalog/brands` | `200` | — |
 | `GET /catalog/brands/{id}/models` | `200` | — |
 | `GET /catalog/models/{id}/generations` | `200` | — |
