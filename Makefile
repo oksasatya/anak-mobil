@@ -25,6 +25,18 @@ TOKENS := @anakmobil/tokens
 -include .env
 export
 
+# Compile against the committed .sqlx cache, never the live database.
+#
+# Without this, `DATABASE_URL` being set makes the sqlx macros query the
+# server and IGNORE the cache — so a stale cache passes here and fails on
+# any machine without a database. It also makes the schema a build
+# dependency, which is circular: `be-migrate` could not compile against an
+# empty database, because the thing that creates the tables needs them to
+# already exist.
+#
+# `?=` so `SQLX_OFFLINE=false make be-prepare` can regenerate the cache.
+SQLX_OFFLINE ?= true
+
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
@@ -50,6 +62,48 @@ db-reset: ## Stop and DELETE the database volume, then start clean
 db-psql: ## Open a psql shell on the development database
 	docker compose exec postgres psql -U postgres -d anakmobil
 
+# `make dev` — every surface that exists, in one terminal.
+#
+# Stopping this cleanly took three attempts, and each failure is why a line
+# below looks the way it does.
+#
+# `cargo run` execs the server as a CHILD, so killing cargo leaves
+# `anakmobil` holding :8080. `set -m` puts each background job in its own
+# process group and `kill -- -PID` then takes the whole subtree.
+#
+# That is still not enough for the landing server. Astro re-execs itself and
+# the survivor ends up re-parented to launchd in a process group of its own
+# — outside the group we just killed. Measured: PPID 1, PGID equal to its own
+# pid. So the trap also sweeps the two ports this target is documented to
+# own. Blunt, and precise enough: these are ports we started ourselves,
+# seconds earlier.
+#
+# Without all of it, ctrl-c leaves a listener behind and the next `make dev`
+# dies with "address already in use" — which would make this worse than
+# opening two terminals by hand.
+#
+# awk rather than sed for the log prefix: BSD awk has fflush(), so lines
+# appear as they happen instead of in 4KB bursts.
+#
+# Every comment here sits ABOVE the recipe on purpose. A `#` line inside a
+# recipe is handed to the shell, and one ending in a backslash continues
+# the comment onto the next line — silently swallowing the command that
+# follows it. That is not hypothetical; it is how the first version of this
+# target ran nothing at all while reporting success.
+#
+# When apps/mobile is scaffolded, add one more line to the group:
+#   ( bun run --filter @anakmobil/mobile start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) &
+dev: db-up ds-build ## Run every surface that exists — API and landing, together
+	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
+	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
+	@echo 'ctrl-c stops both'
+	@echo
+	@set -m; \
+		trap 'kill -- -$$api -$$landing 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
+		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
+		( bun run --filter $(LANDING) dev 2>&1 | awk '{print "[landing] " $$0; fflush()}' ) & landing=$$!; \
+		wait
+
 be-web: ## Run the API in its web role
 	cd $(API) && cargo run --bin anakmobil -- web
 
@@ -70,6 +124,12 @@ be-test: ## Run backend tests
 
 be-cov: ## Backend coverage (requires cargo-llvm-cov)
 	cd $(API) && cargo llvm-cov --workspace --summary-only
+
+be-prepare: ## Regenerate the committed .sqlx query cache against a live database
+	cd $(API) && SQLX_OFFLINE=false cargo sqlx prepare --workspace -- --all-targets
+
+be-sqlx-check: ## Fail if the committed .sqlx cache is stale (what CI runs)
+	cd $(API) && SQLX_OFFLINE=false cargo sqlx prepare --workspace --check -- --all-targets
 
 be-audit: ## Check dependencies for advisories (requires cargo-audit)
 	cd $(API) && cargo audit
