@@ -11,6 +11,7 @@
 pub mod catalog_repo;
 pub mod migrate;
 pub mod service_repo;
+pub mod summary_repo;
 pub mod user_repo;
 pub mod vehicle_repo;
 
