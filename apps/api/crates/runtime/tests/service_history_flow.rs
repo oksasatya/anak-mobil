@@ -140,7 +140,7 @@ async fn a_service(app: &axum::Router, token: &str, car: &str, date: &str, cost:
         Some(json!({
             "service_date": date,
             "mileage_km": 140_200,
-            "category": "oli_mesin",
+            "category": "engine_oil",
             "parts_replaced": ["Filter oli"],
             "garage_name": "Bengkel XYZ",
             "cost": cost,
@@ -175,7 +175,7 @@ async fn a_service_is_recorded_and_read_back_whole() {
 
     assert_eq!(record["service_date"], "2026-01-10");
     assert_eq!(record["mileage_km"], 140_200);
-    assert_eq!(record["category"], "oli_mesin");
+    assert_eq!(record["category"], "engine_oil");
     assert_eq!(record["garage_name"], "Bengkel XYZ");
     assert_eq!(record["cost"], "1200000.00");
     assert_eq!(record["parts_replaced"][0], "Filter oli");
@@ -235,7 +235,7 @@ async fn another_person_cannot_write_to_the_history() {
         &app,
         "POST",
         &format!("/vehicles/{car}/services"),
-        Some(json!({"service_date": "2026-02-01", "category": "rem"})),
+        Some(json!({"service_date": "2026-02-01", "category": "brakes"})),
         Some(&stranger),
     )
     .await;
@@ -483,7 +483,7 @@ async fn a_service_dated_in_the_future_is_refused() {
         &app,
         "POST",
         &format!("/vehicles/{car}/services"),
-        Some(json!({"service_date": "2099-01-01", "category": "rem"})),
+        Some(json!({"service_date": "2099-01-01", "category": "brakes"})),
         Some(&token),
     )
     .await;
@@ -507,7 +507,7 @@ async fn a_record_can_be_amended_and_removed() {
         &format!("/services/{id}"),
         Some(json!({
             "service_date": "2026-01-11",
-            "category": "rem",
+            "category": "brakes",
             "cost": "1500000"
         })),
         Some(&token),
@@ -516,7 +516,7 @@ async fn a_record_can_be_amended_and_removed() {
     assert_eq!(amended.status(), StatusCode::NO_CONTENT);
 
     let body = json(send(&app, "GET", &format!("/services/{id}"), None, Some(&token)).await).await;
-    assert_eq!(body["data"]["category"], "rem");
+    assert_eq!(body["data"]["category"], "brakes");
     assert_eq!(body["data"]["cost"], "1500000.00");
 
     let removed = send(

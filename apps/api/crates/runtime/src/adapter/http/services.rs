@@ -280,7 +280,7 @@ mod tests {
         ServiceRequest {
             service_date: Date::from_calendar_date(2026, Month::January, 10).expect("a real date"),
             mileage_km: Some(140_200),
-            category: ServiceCategory::OliMesin,
+            category: ServiceCategory::EngineOil,
             parts_replaced: vec!["Filter oli".to_owned()],
             garage_name: Some("Bengkel XYZ".to_owned()),
             cost: Some("1200000".to_owned()),
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn a_category_round_trips_through_its_wire_form() {
         // The wire form is the contract a client switches on.
-        let json = serde_json::to_string(&ServiceCategory::KakiKaki).expect("serialising");
-        assert_eq!(json, "\"kaki_kaki\"");
+        let json = serde_json::to_string(&ServiceCategory::Suspension).expect("serialising");
+        assert_eq!(json, "\"suspension\"");
     }
 }

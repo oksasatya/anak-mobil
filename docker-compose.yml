@@ -1,0 +1,62 @@
+# Everything this repository needs locally that is not already on your machine.
+#
+# Deliberately small. Postgres is here because the project needs the pgvector
+# extension and a stock install does not have it. Redis is here only for
+# machines that do not already run one — see the profile below.
+#
+#   make db-up          start Postgres
+#   make db-up-all      start Postgres and Redis, for a machine with no local Redis
+#   make db-down        stop, keeping the data
+#   make db-reset       stop and DELETE the data, then start clean
+name: anakmobil
+
+services:
+  postgres:
+    # pgvector, not plain postgres: the first migration enables the extension,
+    # and the same image is what CI runs, so a difference here shows up as a
+    # local pass and a red pipeline.
+    image: pgvector/pgvector:pg17
+    container_name: am-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: anakmobil
+      POSTGRES_DB: anakmobil
+    ports:
+      # 55432, not 5432, because a Homebrew postgres is commonly already
+      # listening on 5432. Publishing there would either fail to bind or,
+      # worse, appear to work while the application talks to the wrong server.
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone returns true while the server is still running its
+      # first-boot initialisation scripts, so name the database too.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d anakmobil"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: am-redis
+    restart: unless-stopped
+    # Opt-in. Most development machines here already run Redis, and a second
+    # copy is pure duplication.
+    profiles: ["redis"]
+    ports:
+      # 6379 on purpose — the same port a local Redis uses. The two are
+      # mutually exclusive: enable this profile only when you have no local
+      # Redis, and REDIS_URL is then identical either way. One setting, no
+      # branch in the documentation, and nothing to get wrong when switching
+      # machines.
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  pgdata:

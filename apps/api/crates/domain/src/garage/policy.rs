@@ -14,15 +14,15 @@ use time::{Date, Month};
 /// reports it as a non-exhaustive match when they do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ServiceCategory {
-    OliMesin,
-    OliTransmisi,
-    Rem,
-    KakiKaki,
+    EngineOil,
+    TransmissionOil,
+    Brakes,
+    Suspension,
     TuneUp,
-    Ac,
-    Kelistrikan,
-    Body,
-    Lainnya,
+    AirConditioning,
+    Electrical,
+    Bodywork,
+    Other,
 }
 
 /// How often a kind of work comes around.
@@ -38,7 +38,7 @@ impl ServiceCategory {
     ///
     /// `None` means the work is **reactive** — electrical faults and body
     /// repair happen when something breaks, and a reminder for them would
-    /// be noise pretending to be a schedule. `Lainnya` is a catch-all and
+    /// be noise pretending to be a schedule. `Other` is a catch-all and
     /// cannot carry an interval by definition.
     ///
     /// The figures are ordinary Indonesian service practice, not
@@ -49,23 +49,23 @@ impl ServiceCategory {
     #[must_use]
     pub const fn interval(self) -> Option<ServiceInterval> {
         match self {
-            Self::OliMesin => Some(ServiceInterval {
+            Self::EngineOil => Some(ServiceInterval {
                 months: 6,
                 km: Some(5_000),
             }),
-            Self::OliTransmisi => Some(ServiceInterval {
+            Self::TransmissionOil => Some(ServiceInterval {
                 months: 24,
                 km: Some(40_000),
             }),
-            Self::Rem | Self::KakiKaki | Self::TuneUp => Some(ServiceInterval {
+            Self::Brakes | Self::Suspension | Self::TuneUp => Some(ServiceInterval {
                 months: 12,
                 km: Some(20_000),
             }),
-            Self::Ac => Some(ServiceInterval {
+            Self::AirConditioning => Some(ServiceInterval {
                 months: 12,
                 km: None,
             }),
-            Self::Kelistrikan | Self::Body | Self::Lainnya => None,
+            Self::Electrical | Self::Bodywork | Self::Other => None,
         }
     }
 }
@@ -233,9 +233,9 @@ mod tests {
         // schedule. A reminder here would be noise wearing a schedule's
         // clothes.
         for category in [
-            ServiceCategory::Kelistrikan,
-            ServiceCategory::Body,
-            ServiceCategory::Lainnya,
+            ServiceCategory::Electrical,
+            ServiceCategory::Bodywork,
+            ServiceCategory::Other,
         ] {
             let history = [last(category, date!(2026 - 01 - 01), Some(100_000))];
             assert!(
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn an_oil_change_falls_due_six_months_or_five_thousand_km_later() {
         let history = [last(
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             date!(2026 - 01 - 10),
             Some(140_000),
         )];
@@ -267,7 +267,7 @@ mod tests {
         // a month, whatever the calendar says. Treating the date as the
         // only clock is how a taxi ends up on a private car's schedule.
         let history = [last(
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             date!(2026 - 07 - 20),
             Some(140_000),
         )];
@@ -286,7 +286,7 @@ mod tests {
         // The mirror case: parked for two years, well inside the
         // distance, still overdue.
         let history = [last(
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             date!(2024 - 01 - 10),
             Some(140_000),
         )];
@@ -299,7 +299,11 @@ mod tests {
 
     #[test]
     fn a_service_within_a_month_is_soon() {
-        let history = [last(ServiceCategory::Ac, date!(2025 - 09 - 01), None)];
+        let history = [last(
+            ServiceCategory::AirConditioning,
+            date!(2025 - 09 - 01),
+            None,
+        )];
         let reminders = derive_reminders(&history, None, date!(2026 - 08 - 16));
 
         assert_eq!(reminders[0].urgency, Urgency::Soon);
@@ -310,7 +314,7 @@ mod tests {
     fn a_category_with_no_distance_interval_reports_no_distance() {
         // Air conditioning is serviced by season, not by odometer.
         let history = [last(
-            ServiceCategory::Ac,
+            ServiceCategory::AirConditioning,
             date!(2026 - 01 - 01),
             Some(140_000),
         )];
@@ -323,7 +327,7 @@ mod tests {
     #[test]
     fn an_unknown_odometer_leaves_the_distance_open_rather_than_guessing() {
         let history = [last(
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             date!(2026 - 01 - 10),
             Some(140_000),
         )];
@@ -347,7 +351,11 @@ mod tests {
 
     #[test]
     fn a_service_with_no_recorded_mileage_still_reminds_by_date() {
-        let history = [last(ServiceCategory::OliMesin, date!(2026 - 01 - 10), None)];
+        let history = [last(
+            ServiceCategory::EngineOil,
+            date!(2026 - 01 - 10),
+            None,
+        )];
         let reminders = derive_reminders(&history, Some(140_000), date!(2026 - 08 - 16));
 
         assert_eq!(reminders[0].due_at_km, None);
@@ -357,13 +365,21 @@ mod tests {
     #[test]
     fn the_most_urgent_comes_first() {
         let history = [
-            last(ServiceCategory::Ac, date!(2026 - 06 - 01), None), // Later
             last(
-                ServiceCategory::OliMesin,
+                ServiceCategory::AirConditioning,
+                date!(2026 - 06 - 01),
+                None,
+            ), // Later
+            last(
+                ServiceCategory::EngineOil,
                 date!(2024 - 01 - 10),
                 Some(100_000),
             ), // Overdue
-            last(ServiceCategory::Rem, date!(2025 - 09 - 01), Some(139_000)), // Soon
+            last(
+                ServiceCategory::Brakes,
+                date!(2025 - 09 - 01),
+                Some(139_000),
+            ), // Soon
         ];
         let urgencies: Vec<_> = derive_reminders(&history, Some(140_000), date!(2026 - 08 - 16))
             .iter()
@@ -379,14 +395,14 @@ mod tests {
     #[test]
     fn two_overdue_services_order_by_how_overdue_they_are() {
         let history = [
-            last(ServiceCategory::Rem, date!(2025 - 01 - 01), None),
-            last(ServiceCategory::OliMesin, date!(2020 - 01 - 01), None),
+            last(ServiceCategory::Brakes, date!(2025 - 01 - 01), None),
+            last(ServiceCategory::EngineOil, date!(2020 - 01 - 01), None),
         ];
         let reminders = derive_reminders(&history, None, date!(2026 - 08 - 16));
 
         assert_eq!(
             reminders[0].category,
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             "the older neglect first"
         );
         assert!(reminders[0].days_remaining < reminders[1].days_remaining);
@@ -403,7 +419,7 @@ mod tests {
     #[test]
     fn an_absurd_odometer_does_not_overflow() {
         let history = [last(
-            ServiceCategory::OliMesin,
+            ServiceCategory::EngineOil,
             date!(2026 - 01 - 10),
             Some(i32::MAX),
         )];

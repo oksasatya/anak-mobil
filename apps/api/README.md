@@ -9,7 +9,7 @@ Conventions and the reasoning behind them live in [CLAUDE.md](CLAUDE.md). This f
 Requires Rust 1.96+ and a Postgres and Redis to talk to.
 
 ```bash
-cp .env.example .env
+cp ../../.env.example ../../.env   # one .env, at the repository root
 make be-web        # from the repository root
 ```
 
@@ -22,20 +22,19 @@ make be-migrate    # apply migrations and exit
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 ```
 
-A throwaway pair of dependencies, if you have Docker. **`pgvector/pgvector`, not `postgres`** — the first migration enables the extension, so the stock image cannot migrate at all:
+Postgres comes from `docker-compose.yml` at the repository root — **`pgvector/pgvector`, not `postgres`**, because the first migration enables the extension and the stock image cannot migrate at all:
 
 ```bash
-docker run -d --name am-pg -e POSTGRES_PASSWORD=anakmobil -e POSTGRES_DB=anakmobil -p 5432:5432 pgvector/pgvector:pg17
+make db-up         # Postgres on :55432
+make db-up-all     # also Redis, for a machine without one
 ```
 
-```bash
-docker run -d --name am-redis -p 6379:6379 redis:7-alpine
-```
+Redis is assumed to be running on your machine already, which is why it is not started by default. Postgres publishes on **55432** rather than 5432: a Homebrew postgres is commonly already there, and pointing at it does not fail cleanly — it is a real server with the wrong database and no pgvector.
 
 ## What answers today
 
-Accounts, the caller's own cars, the catalog, and service history. Builds and
-everything AI are not built yet.
+Accounts, the caller's own cars, the catalog, service history, and the parts
+catalog. Builds and everything AI are not built yet.
 
 | Route | Answers | Checks |
 |---|---|---|
@@ -62,6 +61,9 @@ everything AI are not built yet.
 | `GET /catalog/models/{id}/generations` | `200` | — |
 | `GET /catalog/generations/{id}/variants` | `200` | — |
 | `POST /catalog/suggestions` | `201` | brand and model present, daily allowance |
+| `GET /parts` | `200` | category and text filter, limit capped |
+| `POST /parts` | `201` | specs inside their ranges, daily allowance |
+| `GET /parts/{id}` | `200` | — |
 
 ```bash
 curl -i localhost:8080/readyz
