@@ -4669,6 +4669,26 @@ Verified before planning, so no task should re-check it: **Postgres is 17.11, an
 
 ## Execution status
 
+### Ready-queue map, built before task 1 and not re-derived
+
+Two edges only: **produces → consumes**, and **same file**. Everything with no edge between it runs together.
+
+```
+1.1 ─┐                          1.1 and 1.3 are the opening pair.
+     ├─> 1.2 ─> 1.4 ─> 1.5 ─> 1.6 ─[PR into dev, CI green]─┐
+1.3 ─┘         ^                                            │
+               └── 1.3 produces policy::{PartCategory,      │
+                   PartSpecs, SuspensionKind}               │
+                                                            v
+                        2.1 ─> 2.2 ─> 2.3 ─> 2.4 ─[PR]─> 3.1 ─> 3.2 ─> 3.3 ─[PR]─> 4.1 ─> 4.2 ─> 4.3 ─[PR]
+```
+
+**The chain is real, and it is not the task graph that causes it.** Every task except 1.3 either adds a migration or changes a query, and all of them share one local Postgres and one `.sqlx` directory that `cargo sqlx prepare --workspace` rewrites wholesale. Two writers running `sqlx migrate run` or `prepare` concurrently produce an interleaved migration history and a cache reflecting neither branch.
+
+**1.3 is the one genuinely parallel task in the plan** — pure `domain` Rust, no migration, no query, no `.sqlx` entry.
+
+Slice boundaries are hard: each ships a pull request into `dev` with CI green before the next starts.
+
 | Task | Slice | Status | Notes |
 |---|---|---|---|
 | 1.1 Rename `service_category` to English | 1 | unstarted | |

@@ -133,22 +133,32 @@ gh pr create --base dev --title "…" --body "…"
 Every ticket runs the same sequence. No step is skipped, and none of them starts before the one before it finished.
 
 ```
-brainstorming  →  spec + plan on disk  →  executing-plans-hybrid
-                                              ↓
-                        separate commits  →  PR into dev  →  merge
+brainstorming  →  grill  →  spec on disk  →  writing-plans  →  /executing-plans-hybrid
+                                                                        ↓
+                                       separate commits  →  PR into dev  →  merge
 ```
 
-**1. `superpowers:brainstorming` first, before any code.** Not after a design has already formed in the writing. The skill classifies the work itself — a spike, a bounded change, or something architectural — and the ceremony scales to that classification. What does not scale is the approval: nothing is implemented until the design has been shown and agreed, however short that design is.
+**1. Read the backlog before designing anything.** 368 issues are already specified, and more than one ticket covers the same ground. AM-361's AC4 turned out to be [AM-88](https://oksasatyaa.atlassian.net/browse/AM-88) in full — plus one requirement AM-361 never mentions — and it depends on a role story that does not exist. Half an hour of reading moved that work to the ticket that already specified it properly. The acceptance criteria also carry reasoning that is expensive to rediscover.
 
-**2. A spec and a plan, written to disk.** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` for the spec, and the plan beside it. On disk rather than in the conversation, because a conversation is lost to compaction and the next session needs to know what was decided and why.
+**2. `superpowers:brainstorming` first, before any code.** Not after a design has already formed in the writing. The skill classifies the work itself — a spike, a bounded change, or something architectural — and the ceremony scales to that classification. What does not scale is the approval: nothing is implemented until the design has been shown and agreed, however short that design is.
 
-**3. `executing-plans-hybrid` runs the plan.** It carries the per-task verdicts the plan wrote down — what is tested first, what is verified by running it, where the risk sits.
+**3. Grill the approved design before it becomes a spec.** `grill-with-docs` against this repository's own documents, and a genuinely different model — `codex:codex-rescue` via the Agent tool — briefed to **refute** the design rather than approve it. A round-one "looks good" is not an answer; make it land an objection or explain concretely why each attack fails.
 
-**4. Separate commits, each one building.** One logical change per commit. A commit that does not compile makes `git bisect` useless, which is most of the reason to split them; where ordering makes that awkward, write the intermediate version rather than shipping a broken commit.
+This is the step that pays. On AM-361 it killed the merge design outright — the pointer scheme could not be flat, concurrency-safe, and exactly undoable at once — and it caught that identifying a part by its product name would let a curator collapse two different wheels into one, turning community evidence into confident fiction. Neither was visible from inside the design. Record which objections changed the design and which were rejected, so the next reader knows the design survived something.
 
-**5. A pull request into `dev`, never into `main`.** `gh pr create --base dev` — the base is not the default, so it is passed explicitly or the PR silently targets the release branch.
+**4. A spec, written to disk and committed.** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. On disk rather than in the conversation, because a conversation is lost to compaction and the next session needs to know what was decided and why. It carries the decisions and their reasoning, what is deliberately absent, and an anti-goals block — so a later reader can tell a gap from an oversight.
 
-**6. Merge once CI is green.** Watched to green, not assumed. A red run is not done.
+**5. `superpowers:writing-plans`, dispatched to its own context, never run inline.** A planner that has lived through the brainstorm inherits every assumption made in it. A fresh one does not, and that is the whole point: on AM-361 the dispatched planner corrected the brief it was given — the enum rename is eight statements, not the nine I had counted, because renaming a value to itself errors.
+
+The brief must carry two things or the dispatch makes the plan worse rather than better: **everything discovered that the spec does not state** (environment facts, traps, the test-framework dialect, call sites that will break), and an instruction to **read the code before writing code into the plan**, naming the nearest existing analogue by path. A plan written from a spec alone confidently invents signatures that do not exist, and that error surfaces only at implementation time.
+
+**6. `/executing-plans-hybrid` runs the plan.** It carries the per-task verdicts the plan wrote down — what is tested first, what is verified by running it, where the risk sits. It maps the whole plan before task 1, dispatches a writer per task on the tier that task earns, re-runs the gates itself rather than trusting a writer's report, and dispatches an independent reviewer that never blocks the next task. Findings go to the plan's ledger and are worked in one pass at the end.
+
+**7. Separate commits, each one building.** One logical change per commit. A commit that does not compile makes `git bisect` useless, which is most of the reason to split them; where ordering makes that awkward, write the intermediate version rather than shipping a broken commit.
+
+**8. A pull request into `dev`, never into `main`.** `gh pr create --base dev` — the base is not the default, so it is passed explicitly or the PR silently targets the release branch.
+
+**9. Merge once CI is green.** Watched to green, not assumed. A red run is not done.
 
 **A ticket too large for one pass is split, and the split is said out loud.** AM-360 arrived carrying two mobile epics plus the catalog — four tables and eighteen endpoints. Attempting that in one pass produces a pull request nobody can review and rushes whichever part of it carries the most risk. Slice it in dependency order, ship each slice through the full sequence above, and leave the ticket open until the last one lands.
 
@@ -156,7 +166,7 @@ brainstorming  →  spec + plan on disk  →  executing-plans-hybrid
 
 **Verify, do not assert.** Run the gate and read its output. "It compiles" is the floor. A summary of what you expect a command to print is not evidence it printed that.
 
-**The backlog is already specified.** 368 issues cover every surface. Before designing something, check whether a ticket already defines it — the acceptance criteria usually carry reasoning that is expensive to rediscover.
+**The backlog is already specified** — 368 issues, and reading them is step 1 of working a ticket above, not optional context.
 
 **Do not commit or push unless asked.** Work accumulates in the working tree for review. When asked, follow the branching rules above — "commit and push" means a feature branch and a pull request into `dev`, not a commit on whatever branch happens to be checked out.
 
