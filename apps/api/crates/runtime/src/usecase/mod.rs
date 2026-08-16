@@ -39,3 +39,4 @@ pub mod auth;
 pub mod catalog;
 pub mod garage;
 pub mod service_history;
+pub mod service_summary;

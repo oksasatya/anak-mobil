@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod probe;
 pub mod request_id;
 pub mod services;
+pub mod summary;
 pub mod vehicles;
 
 use std::net::SocketAddr;
@@ -50,6 +51,7 @@ pub fn router(state: AppState) -> Router {
         // is a 400.
         .route("/vehicles/order", put(vehicles::reorder))
         .route("/vehicles", get(vehicles::list).post(vehicles::create))
+        .route("/vehicles/{id}/summary", get(summary::vehicle))
         .route(
             "/vehicles/{id}/services",
             get(services::list).post(services::create),

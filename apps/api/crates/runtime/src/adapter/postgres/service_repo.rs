@@ -9,6 +9,8 @@ use sqlx::types::BigDecimal;
 use time::Date;
 use uuid::Uuid;
 
+use anakmobil_domain::garage::policy;
+
 use crate::shared::pagination::DateCursor;
 
 /// The taxonomy from the feature breakdown, mirrored from the Postgres enum.
@@ -25,6 +27,44 @@ pub enum ServiceCategory {
     Kelistrikan,
     Body,
     Lainnya,
+}
+
+impl From<ServiceCategory> for policy::ServiceCategory {
+    /// The persistence enum is not the domain enum, deliberately: this
+    /// one carries the sqlx and serde derives that the domain crate has
+    /// no dependencies for. The cost is this match, and the compiler
+    /// refuses to let it go stale — adding a variant on either side makes
+    /// it non-exhaustive.
+    fn from(category: ServiceCategory) -> Self {
+        match category {
+            ServiceCategory::OliMesin => Self::OliMesin,
+            ServiceCategory::OliTransmisi => Self::OliTransmisi,
+            ServiceCategory::Rem => Self::Rem,
+            ServiceCategory::KakiKaki => Self::KakiKaki,
+            ServiceCategory::TuneUp => Self::TuneUp,
+            ServiceCategory::Ac => Self::Ac,
+            ServiceCategory::Kelistrikan => Self::Kelistrikan,
+            ServiceCategory::Body => Self::Body,
+            ServiceCategory::Lainnya => Self::Lainnya,
+        }
+    }
+}
+
+impl From<policy::ServiceCategory> for ServiceCategory {
+    /// The way back, for rendering a reminder the domain produced.
+    fn from(category: policy::ServiceCategory) -> Self {
+        match category {
+            policy::ServiceCategory::OliMesin => Self::OliMesin,
+            policy::ServiceCategory::OliTransmisi => Self::OliTransmisi,
+            policy::ServiceCategory::Rem => Self::Rem,
+            policy::ServiceCategory::KakiKaki => Self::KakiKaki,
+            policy::ServiceCategory::TuneUp => Self::TuneUp,
+            policy::ServiceCategory::Ac => Self::Ac,
+            policy::ServiceCategory::Kelistrikan => Self::Kelistrikan,
+            policy::ServiceCategory::Body => Self::Body,
+            policy::ServiceCategory::Lainnya => Self::Lainnya,
+        }
+    }
 }
 
 /// One entry in a car's history.
