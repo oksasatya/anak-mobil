@@ -572,10 +572,7 @@ async fn cost_visibility_defaults_to_private_and_round_trips() {
     let (token, _email) = a_signed_in_person(&app).await;
     let car = a_car(&app, &token).await;
 
-    let body = json(
-        send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await,
-    )
-    .await;
+    let body = json(send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await).await;
     assert_eq!(body["data"]["cost_visibility"], "private");
 
     let updated = send(
@@ -591,10 +588,7 @@ async fn cost_visibility_defaults_to_private_and_round_trips() {
     .await;
     assert_eq!(updated.status(), StatusCode::NO_CONTENT);
 
-    let body = json(
-        send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await,
-    )
-    .await;
+    let body = json(send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await).await;
     assert_eq!(body["data"]["cost_visibility"], "community");
 }
 
@@ -627,10 +621,7 @@ async fn a_vehicle_still_lists_and_updates_as_it_did() {
     .await;
     assert_eq!(updated.status(), StatusCode::NO_CONTENT);
 
-    let body = json(
-        send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await,
-    )
-    .await;
+    let body = json(send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await).await;
     assert_eq!(body["data"]["nickname"], "Si Merah");
     assert_eq!(body["data"]["name"], "Si Merah");
 }
@@ -748,6 +739,164 @@ async fn removed_at_cannot_be_set_by_the_client() {
         body["data"]["modifications"][0].get("removed_at").is_none(),
         "a client-supplied removed_at reached the stored modification"
     );
+}
+
+#[tokio::test]
+async fn an_unknown_part_id_is_refused_not_a_500() {
+    // A well-formed but stale UUID — the ordinary shape of a client holding
+    // an old list — must be a 404 caught at the foreign key, not a 500 from
+    // Postgres's 23503. A review found this reaching the caller as a 500
+    // before `to_api_error` learned to catch it.
+    let (app, _pool) = app!();
+    let (token, _email) = a_signed_in_person(&app).await;
+    let car = a_car(&app, &token).await;
+
+    let response = send(
+        &app,
+        "POST",
+        &format!("/vehicles/{car}/build/modifications"),
+        Some(json!({ "part_id": Uuid::now_v7() })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_inline_part_path_shares_the_daily_allowance_with_post_parts() {
+    // The curation queue has two entrances. `POST /parts` stops at twenty a
+    // day; typing a part inline while recording a modification reaches the
+    // same insert, and until a review caught it, did so with no ceiling of
+    // its own. Spend the allowance through the first door and confirm the
+    // second is closed too.
+    let (app, _pool) = app!();
+    let (token, _email) = a_signed_in_person(&app).await;
+    let car = a_car(&app, &token).await;
+    let batch = Uuid::now_v7();
+
+    for index in 0..20 {
+        let response = send(
+            &app,
+            "POST",
+            "/parts",
+            Some(a_wheel(&format!("Allowance {batch} {index}"))),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::CREATED,
+            "part {index} of today's allowance was refused early"
+        );
+    }
+
+    let response = send(
+        &app,
+        "POST",
+        &format!("/vehicles/{car}/build/modifications"),
+        Some(json!({ "part": a_wheel(&format!("Allowance {batch} inline")) })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "the inline part path let a twenty-first part through"
+    );
+}
+
+#[tokio::test]
+async fn build_visibility_defaults_to_private() {
+    // Mirrors `vehicles.rs`'s cost_visibility default and the same rule: an
+    // absent field must mean private, not a silent widening of who sees the
+    // build. A review found this specific default unpinned — the suite
+    // stayed green with `default_visibility` flipped to public.
+    let (app, _pool) = app!();
+    let (token, _email) = a_signed_in_person(&app).await;
+    let car = a_car(&app, &token).await;
+
+    let saved = send(
+        &app,
+        "PUT",
+        &format!("/vehicles/{car}/build"),
+        Some(json!({})),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::NO_CONTENT);
+
+    let body = json(
+        send(
+            &app,
+            "GET",
+            &format!("/vehicles/{car}/build"),
+            None,
+            Some(&token),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(body["data"]["visibility"], "private");
+}
+
+#[tokio::test]
+async fn cost_visibility_persists_from_creation() {
+    // The other write path a review found unpinned: `POST /vehicles`, not
+    // only the later `PUT`. The two existing unit tests in `vehicles.rs`
+    // proved serde parsed a default — never that the value reached, or came
+    // back from, the database on either write path.
+    let (app, _pool) = app!();
+    let (token, _email) = a_signed_in_person(&app).await;
+
+    let response = send(
+        &app,
+        "POST",
+        "/vehicles",
+        Some(json!({
+            "described_as": "Toyota Avanza 2019",
+            "cost_visibility": "community"
+        })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let car = json(response).await["data"]["id"]
+        .as_str()
+        .expect("id")
+        .to_owned();
+
+    let body = json(send(&app, "GET", &format!("/vehicles/{car}"), None, Some(&token)).await).await;
+    assert_eq!(body["data"]["cost_visibility"], "community");
+}
+
+#[tokio::test]
+async fn build_notes_are_trimmed() {
+    let (app, _pool) = app!();
+    let (token, _email) = a_signed_in_person(&app).await;
+    let car = a_car(&app, &token).await;
+
+    let saved = send(
+        &app,
+        "PUT",
+        &format!("/vehicles/{car}/build"),
+        Some(json!({ "notes": "  Ganti oli tiap 5000 km  " })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::NO_CONTENT);
+
+    let body = json(
+        send(
+            &app,
+            "GET",
+            &format!("/vehicles/{car}/build"),
+            None,
+            Some(&token),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(body["data"]["notes"], "Ganti oli tiap 5000 km");
 }
 
 #[tokio::test]
