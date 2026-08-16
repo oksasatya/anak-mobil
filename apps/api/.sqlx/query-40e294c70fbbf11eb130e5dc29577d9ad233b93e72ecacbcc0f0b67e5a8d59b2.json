@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO modifications\n            (id, build_id, part_id, install_date, mileage_km, cost, garage_name, notes)\n        SELECT $1, b.id, $4, $5, $6, $7, $8, $9\n        FROM builds b\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE b.id = $3 AND v.owner_id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Date",
+        "Int4",
+        "Numeric",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "40e294c70fbbf11eb130e5dc29577d9ad233b93e72ecacbcc0f0b67e5a8d59b2"
+}

@@ -178,6 +178,16 @@ Migrations run automatically at the start of the **web** role, before the listen
 
 **A migration that has been applied is never edited.** sqlx stores a checksum and refuses to continue when it changes, because two databases would otherwise carry the same version number and different schemas. Fix a mistake with a new migration.
 
+**One boundary, and it is narrow enough to check.** That rule exists to prevent divergence *between databases*. A migration still on an unmerged branch, applied only to your own throwaway development database, has no other copy to diverge from — so it may be amended in place, followed by `make db-drop` to rebuild from the amended file. **Four** conditions, all required: **not merged**, **not pushed**, **nothing else is running against that database**, and **you reset it**. The moment it reaches `dev` — or a branch anybody else, including CI, may have migrated — the rule is absolute again.
+
+The reset is self-enforcing rather than an honour system: sqlx stores a checksum in `_sqlx_migrations` and refuses to run against an amended file, so skipping it stops you at the tool rather than at your own discipline.
+
+**The third condition was added after this rule failed in exactly the way it did not anticipate.** It assumed one person and one database. With two or three agents sharing this development database, amending a migration and resetting *your* copy leaves every concurrent process holding the old checksum — and `sqlx::migrate!` then fails for **every test file in the workspace**, not just the one you touched. It failed **silently**, because the `app!` macro swallows the message and cargo captures stderr for passing tests, so the whole suite reported green having executed nothing.
+
+The recovery is `make db-drop`. The lesson is the condition: amend only when you are the only thing touching that database.
+
+Use it for a mistake found hours after writing, where three corrective migrations against a table created the same afternoon would read as three errors rather than one correct schema. Do not use it to avoid writing a down migration, and never for a migration somebody else may have run.
+
 ### Expand, then contract
 
 A deploy has both versions running at once, so a schema change must be readable by the old code:

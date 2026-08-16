@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH owned AS (\n            SELECT m.id\n            FROM modifications m\n            JOIN builds b   ON b.id = m.build_id\n            JOIN vehicles v ON v.id = b.vehicle_id\n            WHERE m.id = $2 AND v.owner_id = $1\n        ), removed AS (\n            UPDATE modifications\n            SET removed_at = now()\n            WHERE id IN (SELECT id FROM owned) AND removed_at IS NULL\n            RETURNING id\n        )\n        SELECT EXISTS(SELECT 1 FROM owned) AS \"owned!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "owned!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4c1bfcb3176d54a119c2af4c1e1e00aaaf1687dfacd12d7b7810f64106ae8d4f"
+}

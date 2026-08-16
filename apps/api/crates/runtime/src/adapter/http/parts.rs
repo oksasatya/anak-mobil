@@ -25,10 +25,8 @@ use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::pagination::clamp_limit;
 use crate::shared::response::ApiResponse;
+use crate::shared::validation::{self, DecimalSpec, OUT_OF_RANGE};
 use crate::usecase::parts::{self, PartError};
-
-/// The message every out-of-range spec shares.
-const OUT_OF_RANGE: &str = "Angka di luar rentang yang masuk akal.";
 
 #[derive(Debug, Serialize)]
 pub struct PartResponse {
@@ -133,21 +131,6 @@ pub struct SearchQuery {
     pub limit: Option<u16>,
 }
 
-/// One numeric spec's name, its raw text, and the range the column accepts.
-///
-/// A struct rather than five positional arguments: `clippy::too_many_arguments`
-/// starts at seven, and a tuple of five unnamed values at every call site is
-/// how the width and the diameter get swapped.
-struct DecimalSpec<'a> {
-    field: &'static str,
-    raw: Option<&'a str>,
-    min: f64,
-    max: f64,
-    /// Decimal places the column can hold. Anything longer is refused rather
-    /// than rounded — see [`PartRequest::check`].
-    scale: i64,
-}
-
 impl PartRequest {
     /// Validate, and turn the decimal strings into `BigDecimal`s.
     ///
@@ -156,7 +139,13 @@ impl PartRequest {
     /// and this is the message. Without it a caller gets a 500 from a
     /// constraint violation, which breaks AC3's promise that a part is usable
     /// the moment it is typed — a promise a 500 does not keep.
-    fn check(&self) -> Result<PartInput, ApiError> {
+    ///
+    /// `pub(super)` rather than private: `builds.rs`'s inline-part branch on
+    /// `ModificationRequest` reuses this exact validation rather than a
+    /// second copy of these ranges, which is what keeps them from drifting
+    /// out of step with the `CHECK` constraints in one place but not the
+    /// other.
+    pub(super) fn check(&self) -> Result<PartInput, ApiError> {
         let mut problems = serde_json::Map::new();
 
         let brand = self.brand.trim();
@@ -167,32 +156,32 @@ impl PartRequest {
         if product_name.is_empty() {
             problems.insert("product_name".into(), "Wajib diisi.".into());
         }
+        // Bounded, for the same reason every number is. `parts_identity` and
+        // `parts_category_brand_idx` are B-trees over these two columns, and a
+        // B-tree tuple caps at 2704 bytes — measured, a 3000-character brand
+        // gives `index row size 3016 exceeds btree version 4 maximum`, which
+        // reaches the caller as a 500 on the one endpoint whose criteria
+        // forbid one. Worse than the numeric case: the insert fails, so no row
+        // is written and the daily allowance is never consumed, leaving it
+        // unbounded. The numeric path was guarded and the text path beside it
+        // was never asked the same question.
+        if brand.chars().count() > MAX_BRAND {
+            problems.insert("brand".into(), too_long(MAX_BRAND).into());
+        }
+        if product_name.chars().count() > MAX_PRODUCT_NAME {
+            problems.insert("product_name".into(), too_long(MAX_PRODUCT_NAME).into());
+        }
 
+        // Refused, not rounded. Postgres coerces a value past the column's
+        // scale silently, and the idempotent insert then re-selects with what
+        // the caller sent — which no longer matches what was stored, so a
+        // second identical POST fails as "not found" and reaches the client
+        // as a 500. Rounding here would only move the mismatch; storing 66.1
+        // for a typed 66.06 is the same quiet alteration this module refuses
+        // everywhere else. See [`validation::decimal`] for the guard itself
+        // and why `normalized()` runs before `fractional_digit_count()`.
         let mut decimal = |spec: DecimalSpec<'_>| -> Option<BigDecimal> {
-            let raw = spec.raw?.trim();
-            if raw.is_empty() {
-                return None;
-            }
-            let Ok(value) = raw.parse::<BigDecimal>() else {
-                problems.insert(spec.field.into(), OUT_OF_RANGE.into());
-                return None;
-            };
-            if !in_range(&value, spec.min, spec.max) {
-                problems.insert(spec.field.into(), OUT_OF_RANGE.into());
-                return None;
-            }
-            // Refused, not rounded. Postgres coerces a value past the column's
-            // scale silently, and the idempotent insert then re-selects with
-            // what the caller sent — which no longer matches what was stored,
-            // so a second identical POST fails as "not found" and reaches the
-            // client as a 500. Rounding here would only move the mismatch;
-            // storing 66.1 for a typed 66.06 is the same quiet alteration this
-            // module refuses everywhere else.
-            if value.fractional_digit_count() > spec.scale {
-                problems.insert(spec.field.into(), too_precise(spec.scale).into());
-                return None;
-            }
-            Some(value)
+            validation::decimal(spec, &mut problems)
         };
 
         let wheel_diameter_in = decimal(DecimalSpec {
@@ -272,25 +261,16 @@ impl PartRequest {
     }
 }
 
-/// Whether a decimal sits inside the column's `CHECK`.
-///
-/// Compared as text through `f64` rather than by building two `BigDecimal`
-/// bounds: the bounds are whole or one-decimal numbers a `f64` represents
-/// exactly, and the comparison only decides whether to reject.
-/// The message for a value carrying more decimal places than its column.
-fn too_precise(scale: i64) -> String {
-    if scale == 1 {
-        "Maksimal satu angka di belakang koma.".to_owned()
-    } else {
-        format!("Maksimal {scale} angka di belakang koma.")
-    }
-}
+/// Text longer than these overflows the B-tree index behind `parts_identity`
+/// and `parts_category_brand_idx` — a 3000-character brand measured
+/// `index row size 3016 exceeds btree version 4 maximum`. Generous against
+/// real part names, far under that limit.
+const MAX_BRAND: usize = 120;
+const MAX_PRODUCT_NAME: usize = 200;
 
-fn in_range(value: &BigDecimal, min: f64, max: f64) -> bool {
-    value
-        .to_string()
-        .parse::<f64>()
-        .is_ok_and(|v| (min..=max).contains(&v))
+/// The message for text longer than its column's index can hold.
+fn too_long(limit: usize) -> String {
+    format!("Maksimal {limit} karakter.")
 }
 
 /// `GET /parts`
@@ -531,5 +511,94 @@ mod tests {
                 "{field} is out of range and check() accepted it — that reaches the database as a 500"
             );
         }
+    }
+
+    #[test]
+    fn a_trailing_zero_is_not_extra_precision() {
+        // The regression this closes: bare `fractional_digit_count()` counts
+        // declared scale, so "114.30" reported two digits and was refused
+        // against a one-decimal column — a value NUMERIC(5,1) stores exactly,
+        // and one that round-tripped correctly BEFORE the guard existed.
+        // A client formatting decimals to two places is ordinary.
+        let mut request = a_wheel();
+        request.pcd_diameter_mm = Some("114.30".to_owned());
+        assert!(
+            request.check().is_ok(),
+            "114.30 stores as 114.3 with no loss"
+        );
+
+        request.pcd_diameter_mm = Some("114.35".to_owned());
+        assert!(
+            request.check().is_err(),
+            "a real second decimal must still be refused"
+        );
+    }
+
+    #[test]
+    fn every_scale_mirrors_its_column() {
+        // The shared guard is pinned; the per-field number was not. Setting
+        // pcd_diameter_mm to scale 2 left the whole suite green while "114.35"
+        // was accepted, rounded by Postgres to 114.4, re-selected as 114.35,
+        // matched by nothing, and returned as the 500 the guard exists to stop.
+        // One case per column, so a wrong mirror reddens exactly this test.
+        type TooPrecise = (&'static str, fn(&mut PartRequest));
+        let cases: [TooPrecise; 6] = [
+            ("wheel_diameter_in", |r| {
+                r.wheel_diameter_in = Some("18.55".to_owned())
+            }),
+            ("wheel_width_in", |r| {
+                r.wheel_width_in = Some("8.55".to_owned())
+            }),
+            ("pcd_diameter_mm", |r| {
+                r.pcd_diameter_mm = Some("114.35".to_owned())
+            }),
+            ("center_bore_mm", |r| {
+                r.center_bore_mm = Some("66.066".to_owned())
+            }),
+            ("tyre_rim_diameter_in", |r| {
+                r.tyre_rim_diameter_in = Some("18.55".to_owned())
+            }),
+            ("spring_rate_kgmm", |r| {
+                r.spring_rate_kgmm = Some("8.55".to_owned())
+            }),
+        ];
+
+        for (field, break_it) in cases {
+            let mut request = a_wheel();
+            break_it(&mut request);
+            assert!(
+                request.check().is_err(),
+                "{field} accepted a scale its column cannot hold — Postgres rounds it, \
+                 the idempotent re-select then matches nothing, and a duplicate POST is a 500"
+            );
+        }
+    }
+
+    #[test]
+    fn text_longer_than_its_index_can_hold_is_refused() {
+        // A B-tree tuple caps at 2704 bytes and both columns sit in two of
+        // them. Measured: a 3000-character brand gives `index row size 3016
+        // exceeds btree version 4 maximum` — a 500, and one that consumes no
+        // allowance because the insert never happens.
+        let mut request = a_wheel();
+        request.brand = "x".repeat(MAX_BRAND + 1);
+        assert!(
+            request.check().is_err(),
+            "an over-long brand must not reach the index"
+        );
+
+        let mut request = a_wheel();
+        request.product_name = "x".repeat(MAX_PRODUCT_NAME + 1);
+        assert!(
+            request.check().is_err(),
+            "an over-long product name must not reach the index"
+        );
+
+        let mut request = a_wheel();
+        request.brand = "Ö".repeat(MAX_BRAND);
+        assert!(
+            request.check().is_ok(),
+            "the limit counts characters, not bytes"
+        );
     }
 }

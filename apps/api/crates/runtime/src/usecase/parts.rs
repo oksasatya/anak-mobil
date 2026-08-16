@@ -15,7 +15,7 @@ use crate::adapter::postgres::part_repo::{self, Part, PartCategory, PartInput};
 /// rather than to the server. The same reasoning and the same number as
 /// `catalog::SUGGESTIONS_PER_DAY`; kept separate because the two queues are
 /// read by different people and their limits will diverge.
-const PARTS_PER_DAY: i64 = 20;
+pub(crate) const PARTS_PER_DAY: i64 = 20;
 
 /// Why a parts operation did not succeed.
 #[derive(Debug, thiserror::Error)]
@@ -63,6 +63,27 @@ pub async fn detail(pool: &PgPool, id: Uuid) -> Result<Part, PartError> {
 /// # Errors
 ///
 /// [`PartError::TooManyParts`] when today's allowance is spent.
+/// Whether this person has used up today's parts allowance.
+///
+/// Shared, and it has to be: the queue has more than one entrance. Typing a
+/// part inline while recording a modification reaches the same insert without
+/// passing through [`suggest`], so a limit that lives only here is a limit on
+/// one door of two. A review found exactly that hole.
+///
+/// A rolling twenty-four hours rather than a calendar day, so the allowance
+/// does not refill in a burst at midnight.
+///
+/// # Errors
+///
+/// [`sqlx::Error`] when the count fails.
+pub(crate) async fn allowance_spent(
+    conn: &mut sqlx::PgConnection,
+    suggested_by: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let since = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+    Ok(part_repo::suggested_since(conn, suggested_by, since).await? >= PARTS_PER_DAY)
+}
+
 pub async fn suggest(
     pool: &PgPool,
     suggested_by: Uuid,
@@ -70,8 +91,7 @@ pub async fn suggest(
 ) -> Result<Uuid, PartError> {
     let mut conn = pool.acquire().await?;
 
-    let since = time::OffsetDateTime::now_utc() - time::Duration::days(1);
-    if part_repo::suggested_since(&mut conn, suggested_by, since).await? >= PARTS_PER_DAY {
+    if allowance_spent(&mut conn, suggested_by).await? {
         return Err(PartError::TooManyParts);
     }
 

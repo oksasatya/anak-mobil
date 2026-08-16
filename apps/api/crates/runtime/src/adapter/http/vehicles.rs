@@ -14,16 +14,17 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
-use sqlx::types::BigDecimal;
 use time::Date;
 use uuid::Uuid;
 
 use crate::adapter::http::auth::Authenticated;
 use crate::adapter::http::summary::{self, ListSummaryResponse};
+use crate::adapter::postgres::build_repo::Visibility;
 use crate::adapter::postgres::vehicle_repo::{VehicleInput, VehiclePrivate};
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::response::{ApiResponse, NoContent};
+use crate::shared::validation;
 use crate::usecase::garage::{self, GarageError};
 use crate::usecase::service_summary;
 
@@ -109,9 +110,17 @@ impl From<VehiclePrivate> for PrivateResponse {
 pub struct VehicleDetailResponse {
     #[serde(flatten)]
     pub vehicle: VehicleResponse,
+    /// Who may see this car's costs. On the detail response only — the list
+    /// stays as it was, since this is a setting about money rather than
+    /// money itself.
+    pub cost_visibility: Visibility,
     /// Absent when nothing private was recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private: Option<PrivateResponse>,
+}
+
+fn default_cost_visibility() -> Visibility {
+    Visibility::Private
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +131,10 @@ pub struct VehicleRequest {
     pub year: Option<i16>,
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
+    /// An absent field must mean private, never a silent widening of who
+    /// sees what this car cost.
+    #[serde(default = "default_cost_visibility")]
+    pub cost_visibility: Visibility,
     /// Optional at creation; a person can add their plate later.
     pub private: Option<PrivateRequest>,
 }
@@ -150,6 +163,7 @@ impl VehicleRequest {
             year: self.year,
             colour: self.colour.clone(),
             mileage_km: self.mileage_km,
+            cost_visibility: self.cost_visibility,
         }
     }
 
@@ -168,14 +182,28 @@ impl VehicleRequest {
 
 impl PrivateRequest {
     fn to_private(&self) -> Result<VehiclePrivate, ApiError> {
-        let purchase_price = match &self.purchase_price {
-            Some(raw) => Some(raw.parse::<BigDecimal>().map_err(|_| {
-                ApiError::validation(serde_json::json!({
-                    "purchase_price": "Harus berupa angka, contoh: 185000000"
-                }))
-            })?),
-            None => None,
-        };
+        // Through the shared guard, and this was the third place in one ticket
+        // to need it. Parsing alone accepts what the column then alters or
+        // rejects: `vehicle_private.purchase_price` is NUMERIC(14,2), so
+        // "185000000.755" was silently rounded to a different price than the
+        // owner typed, and "9999999999999999" reached Postgres as
+        // `22003 numeric field overflow` — a 500 where 422 is correct.
+        //
+        // A negative price was accepted too. Nothing costs less than nothing.
+        let mut problems = serde_json::Map::new();
+        let purchase_price = validation::decimal(
+            validation::DecimalSpec {
+                field: "purchase_price",
+                raw: self.purchase_price.as_deref(),
+                min: 0.0,
+                max: 999_999_999_999.99,
+                scale: 2,
+            },
+            &mut problems,
+        );
+        if !problems.is_empty() {
+            return Err(ApiError::validation(serde_json::Value::Object(problems)));
+        }
 
         Ok(VehiclePrivate {
             plate: self.plate.clone(),
@@ -232,9 +260,11 @@ pub async fn detail(
     let (vehicle, private) = garage::detail(&state.pool, caller.user_id, id)
         .await
         .map_err(to_api_error)?;
+    let cost_visibility = vehicle.cost_visibility;
 
     Ok(ApiResponse::ok(VehicleDetailResponse {
         vehicle: vehicle.into(),
+        cost_visibility,
         private: private.map(Into::into),
     }))
 }
@@ -351,6 +381,7 @@ mod tests {
             year: Some(2019),
             colour: None,
             mileage_km: None,
+            cost_visibility: Visibility::Private,
             private: None,
         }
     }
@@ -382,6 +413,25 @@ mod tests {
         request.described_as = None;
         request.variant_id = Some(Uuid::now_v7());
         assert!(request.check().is_ok());
+    }
+
+    #[test]
+    fn an_absent_cost_visibility_defaults_to_private() {
+        // A caller who has never heard of the field must not end up with
+        // their spend visible to the community by omission.
+        let parsed: VehicleRequest =
+            serde_json::from_str(r#"{"described_as": "Toyota Avanza 2019"}"#)
+                .expect("deserialising");
+        assert_eq!(parsed.cost_visibility, Visibility::Private);
+    }
+
+    #[test]
+    fn an_explicit_cost_visibility_is_honoured() {
+        let parsed: VehicleRequest = serde_json::from_str(
+            r#"{"described_as": "Toyota Avanza 2019", "cost_visibility": "community"}"#,
+        )
+        .expect("deserialising");
+        assert_eq!(parsed.cost_visibility, Visibility::Community);
     }
 
     #[test]
@@ -450,6 +500,7 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            cost_visibility: Visibility::Private,
             catalog_name: None,
         };
         assert!(!VehicleResponse::from(unnamed).name.is_empty());
@@ -466,8 +517,46 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            cost_visibility: Visibility::Private,
             catalog_name: Some("Toyota Avanza 1.5 G".to_owned()),
         };
         assert_eq!(VehicleResponse::from(named).name, "Si Putih");
+    }
+
+    #[test]
+    fn a_purchase_price_the_column_cannot_hold_is_refused() {
+        // Third occurrence of one class in a single ticket: parse-only
+        // validation on a NUMERIC(14,2) column. `185000000.755` was silently
+        // stored as a different price than the owner typed, and a sixteen-digit
+        // value reached Postgres as `22003 numeric field overflow` — a 500
+        // where 422 is right. A negative price was accepted outright.
+        let priced = |raw: &str| PrivateRequest {
+            plate: None,
+            vin: None,
+            purchase_price: Some(raw.to_owned()),
+            purchase_date: None,
+        };
+
+        assert!(
+            priced("185000000").to_private().is_ok(),
+            "an ordinary price"
+        );
+        assert!(
+            priced("185000000.50").to_private().is_ok(),
+            "rupiah with sen"
+        );
+        assert!(
+            priced("185000000.755").to_private().is_err(),
+            "more scale than the column"
+        );
+        assert!(
+            priced("9999999999999999").to_private().is_err(),
+            "would overflow, not 500"
+        );
+        assert!(
+            priced("-1").to_private().is_err(),
+            "nothing costs less than nothing"
+        );
+        assert!(priced("mahal").to_private().is_err(), "not a number");
     }
 }

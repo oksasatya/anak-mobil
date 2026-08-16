@@ -7,6 +7,8 @@
 
 API := apps/api
 LANDING := @anakmobil/landing
+# A scratch database for the sqlx cache. Empty by construction — see be-prepare.
+PREPARE_URL := postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil_prepare
 TOKENS := @anakmobil/tokens
 
 .DEFAULT_GOAL := help
@@ -58,6 +60,30 @@ db-down: ## Stop the containers, keeping the data
 db-reset: ## Stop and DELETE the database volume, then start clean
 	docker compose --profile redis down -v
 	$(MAKE) db-up
+
+db-drop: ## Drop and recreate the database, then migrate — faster than db-reset
+	@docker compose exec -T postgres psql -U postgres -q \
+		-c 'DROP DATABASE IF EXISTS anakmobil WITH (FORCE)' -c 'CREATE DATABASE anakmobil'
+	@$(MAKE) --no-print-directory be-migrate
+	@echo 'empty. `make db-seed` adds the starter catalog.'
+
+# Reference data only, and that distinction is the point.
+#
+# The repository rule is that nothing is seeded with fake data: no invented
+# community counts, no fabricated activity, because the platform launches
+# empty and the low-data state is designed as a primary experience rather
+# than a fallback. A catalog of cars that genuinely exist is not that — it is
+# reference data, and `POST /catalog/suggestions` already exists for the cars
+# it is missing.
+#
+# So there is no `db-seed-users` and no fixture garage. Nothing here creates a
+# person, a vehicle, a build, or a service record. Develop against the empty
+# state, because that is what the first real user sees.
+db-seed: ## Load the starter vehicle catalog — real cars only, no fabricated activity
+	@test "$${APP_ENV:-development}" = development \
+		|| { echo 'refusing: APP_ENV is $(APP_ENV), not development'; exit 1; }
+	@docker compose exec -T postgres psql -U postgres -d anakmobil -q -v ON_ERROR_STOP=1 \
+		< $(API)/seeds/catalog.sql
 
 db-psql: ## Open a psql shell on the development database
 	docker compose exec postgres psql -U postgres -d anakmobil
@@ -125,11 +151,35 @@ be-test: ## Run backend tests
 be-cov: ## Backend coverage (requires cargo-llvm-cov)
 	cd $(API) && cargo llvm-cov --workspace --summary-only
 
-be-prepare: ## Regenerate the committed .sqlx query cache against a live database
-	cd $(API) && SQLX_OFFLINE=false cargo sqlx prepare --workspace -- --all-targets
+# Regenerate against a THROWAWAY EMPTY database, never the one you develop on.
+#
+# sqlx infers Postgres nullability by reading the query plan, and the plan
+# changes with table statistics. Measured: with 546 vehicles and 1062 users in
+# the table, `find_owned`'s four LEFT JOINs make the planner switch strategy
+# and sqlx decides `v.id` is nullable — the macro then fails to compile against
+# a schema that has not changed. The same check on an empty database passes.
+#
+# That alone would be an annoyance. What makes it dangerous is that
+# `cargo sqlx prepare` CLEARS .sqlx before regenerating, so a failed run leaves
+# an empty cache and breaks the offline build too — the one thing the cache
+# exists to keep working.
+#
+# CI always has a fresh database, which is why this only ever bites locally.
+# So: build one, use it, drop it.
+be-prepare: ## Regenerate the committed .sqlx cache against a throwaway empty database
+	@echo 'preparing against a scratch database, not $(shell echo $$DATABASE_URL | sed "s|.*/||")'
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE IF EXISTS anakmobil_prepare' -c 'CREATE DATABASE anakmobil_prepare'
+	@cd $(API)/crates/runtime && DATABASE_URL=$(PREPARE_URL) sqlx migrate run >/dev/null
+	cd $(API) && SQLX_OFFLINE=false DATABASE_URL=$(PREPARE_URL) cargo sqlx prepare --workspace -- --all-targets
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE anakmobil_prepare'
 
+# Same reasoning as be-prepare: check against an empty database, because that
+# is what CI has and what the cache was generated from.
 be-sqlx-check: ## Fail if the committed .sqlx cache is stale (what CI runs)
-	cd $(API) && SQLX_OFFLINE=false cargo sqlx prepare --workspace --check -- --all-targets
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE IF EXISTS anakmobil_prepare' -c 'CREATE DATABASE anakmobil_prepare'
+	@cd $(API)/crates/runtime && DATABASE_URL=$(PREPARE_URL) sqlx migrate run >/dev/null
+	cd $(API) && SQLX_OFFLINE=false DATABASE_URL=$(PREPARE_URL) cargo sqlx prepare --workspace --check -- --all-targets
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE anakmobil_prepare'
 
 be-audit: ## Check dependencies for advisories (requires cargo-audit)
 	cd $(API) && cargo audit

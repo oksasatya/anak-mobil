@@ -54,7 +54,7 @@ The execution loop pastes **both** blocks below into every task brief, unchanged
 - Repo root /Volumes/Project/anak-mobil. Backend apps/api. Branch from `dev`, never `main`.
 - Postgres 17.11 and Redis run in OrbStack:
     DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil
-    REDIS_URL=redis://127.0.0.1:56379
+    REDIS_URL=redis://127.0.0.1:6379
 - Migrations live in apps/api/crates/runtime/migrations/, NOT the workspace root —
   sqlx::migrate!() resolves relative to CARGO_MANIFEST_DIR.
   Create with:  cd apps/api/crates/runtime && sqlx migrate add -r <name>      (always -r)
@@ -2550,7 +2550,7 @@ async fn a_service_record_still_works_with_english_categories() {
 ```bash
 cd /Volumes/Project/anak-mobil/apps/api
 DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil \
-REDIS_URL=redis://127.0.0.1:56379 \
+REDIS_URL=redis://127.0.0.1:6379 \
 cargo test --workspace
 ```
 
@@ -3218,6 +3218,8 @@ not be told the thing does not exist."
 **Minimality check:**
 - **No new endpoint for `cost_visibility`.** It becomes a field on the existing `PUT /vehicles/{id}` request and the existing detail response. A `PATCH /vehicles/{id}/cost-visibility` would be a second write path to one column.
 - `add_modification` accepts **either** `part_id` **or** an inline `part` object, and the inline branch calls `part_repo::find_or_create_pending` — the same function `POST /parts` calls. Do not write a second insert.
+
+**And check the allowance before it.** Naming the repository function here is what produced a real hole: the daily ceiling lives in `usecase::parts`, so calling the repo directly reaches the insert without passing the guard, and the inline path had no limit at all while `POST /parts` stopped at twenty. Use `usecase::parts::allowance_spent(tx, owner_id)` — not `suggest`, which takes a pool and would put the insert outside this transaction.
 - No build-photo endpoints. The table exists; upload is out of scope and stubbing a route for it would be scaffolding.
 
 **Acceptance criteria:**
@@ -3651,7 +3653,20 @@ Write each body in full following `tests/parts_flow.rs`'s helper style — the s
 /// not user-supplied — so there is no case where a row is inserted into the
 /// middle of the order, which is the failure the compound cursor exists for.
 ///
-/// Complexity: `O(log n + limit)` through `builds_visible_idx`.
+/// Complexity: NOT `O(log n + limit)`. Measured at 50k builds, 98% private:
+/// the planner declines `builds_visible_idx` for this predicate and walks
+/// `builds_pkey` backwards — 601 rows and 2419 buffers to return 21. Deep into
+/// a cursor with a viewer who owns nothing, it degrades to a `Seq Scan` over
+/// `vehicles` plus a blocking sort.
+///
+/// The cause is `OR v.owner_id = $1`: half the predicate lives on another
+/// table, and a partial index holding only non-private builds is not a
+/// superset of what the query needs — the viewer's own private builds are
+/// missing from it. No index on `builds` alone can fix that.
+///
+/// The fix, when the feed is slow enough to matter, is a `UNION ALL` of
+/// "visible" and "mine". Do not add another index here, and do not restore a
+/// complexity claim the planner does not deliver.
 ///
 /// # Errors
 ///
@@ -4598,7 +4613,7 @@ async fn a_removed_modification_still_counts_after_a_merge() {
 cd /Volumes/Project/anak-mobil/apps/api
 for i in $(seq 1 20); do
   DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil \
-  REDIS_URL=redis://127.0.0.1:56379 \
+  REDIS_URL=redis://127.0.0.1:6379 \
   cargo test --workspace two_curators_merging_the_same_part -- --exact --nocapture || break
 done
 ```
@@ -4646,6 +4661,7 @@ Block A, verbatim, in every brief. The five that cost the most if rediscovered r
 2. **The `#[sqlx(rename_all)]` / `#[serde(rename_all)]` derives couple the Rust variant name to both the SQL label and the JSON wire form.** The Postgres `RENAME VALUE` and the Rust variant rename must land in the same commit — either alone leaves the enum unable to decode its own column, and `service_repo.rs` contains no snake_case literal a grep would find.
 3. **`cargo sqlx prepare` while the crate does not compile writes an incomplete cache** that then fails `--check` in CI. Fix compilation first.
 4. **`ConnectInfo` must be inserted into a test request's extensions** or every rate-limited route fails.
+4b. **Run the gates through `make`, never a bare `cargo clippy`.** Without `SQLX_OFFLINE=true` the sqlx macros load `.env` themselves and query the LIVE database, and its nullability inference can differ from the committed `.sqlx` cache — producing a compile error in a file nobody touched. The `Makefile` sets and exports `SQLX_OFFLINE ?= true`, so `make be-lint` / `make be-test` are the honest commands. Redis is on **6379** (the machine's own), not 56379; Postgres is on 55432.
 5. **`time::Date`'s serde is not ISO 8601.** Every `Date` on the wire goes through `crate::shared::iso_date`.
 
 Verified before planning, so no task should re-check it: **Postgres is 17.11, and `ALTER TYPE … RENAME VALUE` runs inside a transaction with no table rewrite.** Eight statements, not nine — `tune_up` is already English and renaming a value to itself errors.
@@ -4701,10 +4717,10 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 | 1.4 `part_repo` | 1 | **landed** | Compiled first try against the real schema — no `Brake`/`Brakes` mismatch, no missing column, zero `#[sqlx(rename)]` overrides. Controller re-ran `make be-test` · clippy · `sqlx --check`, all EXIT=0. `search` text path is `O(n)` by design with a `ponytail:` marker naming the pg_trgm upgrade at ~10k rows. |
 | 1.5 Parts endpoints | 1 | **landed** | `GET/POST /parts`, `GET /parts/{id}`. `missing_specs` derived per response, never stored. `PARTS_PER_DAY = 20`. Controller re-ran fmt · clippy · boundary · sqlx-check · offline build · be-test, all EXIT=0. |
 | 1.6 Slice 1 end to end | 1 | **landed** | 13 tests, 3 sabotages each breaking exactly the test that describes it. Found the decimal round-trip defect and correctly left it failing rather than bending the test. |
-| 2.1 `builds`, `modifications`, `cost_visibility` | 2 | unstarted | |
-| 2.2 `build_repo` | 2 | unstarted | |
-| 2.3 Build use case and endpoints | 2 | unstarted | |
-| 2.4 Slice 2 end to end | 2 | unstarted | |
+| 2.1 `builds`, `modifications`, `cost_visibility` | 2 | **landed** | 16 CHECK assertions proven in both directions, revert leaves no orphan enum type. Controller re-ran the gate. **Reviewer not yet dispatched — the controller was diverted and forgot; it is queued, not waived.** |
+| 2.2 `build_repo` | 2 | **landed** | `ensure_build` added — the plan named that trap only in 2.3's brief, so 2.2's own checklist would have shipped the data-loss bug. Three indexes corrected inline, each proven wrong by a real plan. |
+| 2.3 Build use case and endpoints | 2 | **landed** | Decimal guard extracted to `shared::validation`; `parts.rs`, `services.rs`, `builds.rs`, and later `vehicles.rs` all use it. |
+| 2.4 Slice 2 end to end | 2 | **landed** | 19 tests, four sabotages each reddening exactly the test that describes it. Found the migration-checksum drift that made the whole suite silently skip. |
 | 3.1 Three-query list and batched counts | 3 | unstarted | |
 | 3.2 Build list endpoint, counts on parts | 3 | unstarted | |
 | 3.3 Slice 3 end to end | 3 | unstarted | |
@@ -4719,6 +4735,10 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 | Task | Severity | Where | What breaks | Smallest fix | Status |
 |---|---|---|---|---|---|
 | 1.3 | `hygiene` | This plan, Task 1.3 steps 1–4 | The step order writes the failing test file first and appends `pub mod policy;` to `build/mod.rs` only at step 4. An undeclared module is not part of the crate, so the RED step matches **zero tests and passes silently** rather than failing for the intended reason — a false red, which is worse than no red because it looks like the discipline ran. | Register the module before the RED step. The implementer did this unprompted and reported it; corrected in the plan text below. | **fixed in plan** |
+| 2.3 | **`security` — FIXED IMMEDIATELY** | `usecase/builds.rs::resolve_part` | The curation queue had two entrances and a limit on one. `POST /parts` stopped at twenty a day; typing a part inline while recording a modification called `part_repo::find_or_create_pending` directly, never entering `usecase::parts::suggest` where the ceiling lives — so that path had no limit at all, and `PUT /modifications/{id}` was a third door. The queue is read by a person: flooding it is denial of service against curation. **The plan text caused it** by naming the repository function rather than the use case, which is how a writer walks past a guard while following instructions correctly. | `allowance_spent` shared and checked in `resolve_part`, returning 429. Plan text corrected so Task 2.4 could not reproduce it. | **closed — controller, inline; plan corrected** |
+| 2.3 | **`correctness` — FIXED IMMEDIATELY** | `to_api_error` in `http/builds.rs` | An unknown `part_id` — a well-formed but stale UUID, ordinary for a client holding an old list — hit the foreign key and surfaced as `23503` through `ApiError::internal`: a **500** on two routes. Same defect class the module guards every numeric field against, applied to the one foreign key nobody asked. | One arm at the choke point mapping 23503 to 404. | **closed — controller, inline** |
+| 2.3 | `test-integrity` | Five guards proven to survive mutation | Reviewer ran 14 mutations against a 154-green baseline. Survivors: **build `visibility` default flipped to `Public`**, `cost_visibility` dropped from the write path, the detail response hardcoding `Private`, `add_modification` switched to `upsert_build`, and cost losing `.with_scale(2)`. The first is the worst kind — a default that silently publishes somebody's car, in code that documents the rule and cites `vehicles.rs` as precedent while not following it. | All four sent to Task 2.4's brief mid-flight and pinned there. | **closed — 2.4** |
+| 2.4 | `structural` — **the rule I wrote was wrong** | `apps/api/CLAUDE.md`, the amend-in-place boundary | Amending the builds migration and resetting *my* database left concurrent agents holding the old checksum, so `sqlx::migrate!` failed for **every test file in the workspace** — and **silently**, because `app!` swallows the message and cargo captures stderr for passing tests. The whole suite reported green having executed nothing. The boundary assumed one actor and one database; two to three agents share this one. | Fourth condition added: **nothing else is running against that database**. Recovery is `make db-drop`, which 2.4 ran unprompted. | **closed — rule tightened** |
 | 1.5 | **`structural` — FIXED IMMEDIATELY** | `parts.center_bore_mm`, and `check()` | `NUMERIC(5,1)` rounds `66.06` to `66.1` silently; `find_or_create_pending` then re-selects the un-rounded value, matches nothing, and `fetch_one` gives `RowNotFound` → **500 on the second identical POST**, where the AC promises 201 with the same id. **66.06 mm is a real VAG centre bore** — reachable by a common wheel, and the wheels people actually fit are the ones this table exists to describe. Verified against the live database: `tersimpan: 66.1`, `cocok dengan 66.06: 0`. | Column widened to `NUMERIC(6,2)` — that column only, since PCD (114.3), widths (8.5) and spring rates are one-decimal quantities in practice. Boundary now **refuses** a scale no column can hold rather than rounding, because rounding only moves the mismatch. Both pinned by tests, both proven by sabotage. | **closed — controller, inline; reviewed separately** |
 | 1.5 | **`structural` — FIXED IMMEDIATELY** | `adapter/http/parts.rs`, the response `text` closure | PCD `114.3` came back as `"114.3000"`. Postgres transmits NUMERIC in base-10000 groups, so decoding leaves trailing zeros. A client comparing spec strings sees two values for one PCD — the comparability AC2 exists to provide. Same drift produced `185000000.5000` for a purchase price in AM-360. **Found by Task 1.6's own test, which correctly stayed red rather than being bent to fit.** | `.normalized()` before `.to_string()`. Normalising rather than pinning a scale, since the scale differs per column and a fixed `with_scale` would render `114.30`. | **closed — controller, inline; reviewed separately** |
 | 1.5 | `test-integrity` | `adapter/http/parts.rs` — the twelve boundary guards | Mutation-proven by the reviewer: **nine of twelve guards could be deleted with the suite still green**, and deleting one is exactly what turns a constraint violation into the 500 AC6 forbids. `every_range_message_names_its_field` also claimed to check multi-field reporting and asserted only the error code — adding `break;` to stop at the first problem left it passing. | Added `every_range_guard_can_actually_fail`, one case per guard. Sabotage confirms: widening `wheel_width_in` makes exactly that test red. | **closed — controller, inline** |
@@ -4733,8 +4753,8 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 | 1.4 | `correctness` | `part_repo.rs:257-258` — the `search` category-only path | The doc claims `O(log n + k)` via `parts_category_brand_idx`. **Measured at n=20,000 with a real plan:** the index finds the category's rows and never orders them, because `ORDER BY` leads with `status` while the index is `(category, brand)`. So `LIMIT` is not an early stop — 3,333 rows read and heap-sorted to return 20, 329 buffers touched. Real bound is `O(m + limit·log limit)`. At 50k wheels a 20-row page reads 50k rows, and whoever profiles it reads the comment, believes the index is doing the work, and looks elsewhere. **The wrong comment is what makes this survive.** | Correct the comment, not the schema — zero rows today makes a migration premature, and this is the discipline the file already applies to its text path. Name the fix and its trigger: `CREATE INDEX parts_browse_idx ON parts (category, status, brand, product_name, id)` when the existing ~10k marker fires. | fix pass |
 | 1.4 | `hygiene` | `part_repo.rs:180-186` — `Part::specs()` | `f64::from_str(…).ok()` turns a parse failure into `None`, and `None` means *absent* to `missing_specs` — a present number would read as missing and flip `is_complete` to false. That is the AC2 inversion arriving silently. **Currently unreachable, and worth recording what holds it closed:** every NUMERIC spec column carries a range CHECK, so NaN and out-of-range cannot be stored and an in-range value always parses. The safety lives in the migration, not in this function. | None today. If a spec column is ever added without a range CHECK, this misreports completeness instead of erroring — so the rule is: a new spec column gets a CHECK, always. | **noted; no action** |
 | 1.4 | `hygiene` | `part_repo.rs:274` | User text reaches `ILIKE` with `%` and `_` unescaped. **Not injection** — `format!` builds the bound parameter value and `$2` is bound by `query_as!`. Effect is wildcard semantics: `q=_` matches everything, and a product code containing `_` matches more than intended. Blast radius nil — a query-less search already returns a whole page and `LIMIT` bounds it. | Escaping costs three allocations to fix a non-problem. Recorded, left alone. | **noted; no action** |
-| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — the `tyre_width_mm` and `tyre_rim_diameter_in` checks | **Proven by mutation, not argued:** deleting either check leaves all 8 tests passing. `a_tyre_needs_three_numbers_and_no_wheel_numbers` blanks only the aspect ratio, so the other two are never what makes an assertion true. If a later edit drops the width check, a tyre carrying only an aspect ratio reads as complete, the SQL mirror agrees, and the fitment engine compares a tyre with no width — exactly the "complete because nothing was required" line the spec draws. Wheels and Suspension are pinned against this; Tyres is not. | Add `a_bare_tyre_names_all_three`, the direct sibling of `a_bare_wheel_names_all_six`: assert `missing_specs(Tyres, &PartSpecs::default())` equals all three fields in order. Kills both mutants and pins field order too. | **fix pass — but before Task 1.4 writes the SQL mirror**, because that is when this definition becomes load-bearing in two places at once |
-| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — `SpecField::as_str()` | 9 of the 11 mappings are unfalsifiable; only `OffsetEtMm` and `CenterBoreMm` are asserted. Verified: typoing `"tyre_width_mm"` or `"suspension_kind"` passes all 8 tests. `as_str` is the column name *and* the wire name — the join between this policy, the client's label lookup, and any SQL keyed by column. A typo raises nothing anywhere; the client renders a key that maps to nothing. | Turn the two-line assert into a table over all eleven. ~13 lines, kills the whole class. | fix pass |
+| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — the `tyre_width_mm` and `tyre_rim_diameter_in` checks | **Proven by mutation, not argued:** deleting either check leaves all 8 tests passing. `a_tyre_needs_three_numbers_and_no_wheel_numbers` blanks only the aspect ratio, so the other two are never what makes an assertion true. If a later edit drops the width check, a tyre carrying only an aspect ratio reads as complete, the SQL mirror agrees, and the fitment engine compares a tyre with no width — exactly the "complete because nothing was required" line the spec draws. Wheels and Suspension are pinned against this; Tyres is not. | Add `a_bare_tyre_names_all_three`, the direct sibling of `a_bare_wheel_names_all_six`: assert `missing_specs(Tyres, &PartSpecs::default())` equals all three fields in order. Kills both mutants and pins field order too. | **closed** — `a_bare_tyre_names_all_three`, proven by sabotage: removing the tyre width check reddens it and nothing else |
+| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — `SpecField::as_str()` | 9 of the 11 mappings are unfalsifiable; only `OffsetEtMm` and `CenterBoreMm` are asserted. Verified: typoing `"tyre_width_mm"` or `"suspension_kind"` passes all 8 tests. `as_str` is the column name *and* the wire name — the join between this policy, the client's label lookup, and any SQL keyed by column. A typo raises nothing anywhere; the client renders a key that maps to nothing. | Table over all eleven. | **closed** — `every_spec_field_names_its_column`; misspelling one mapping reddens it and nothing else |
 | 1.3 | `hygiene` | This plan, Task 1.3 Step 1 | The plan's test body writes `let mut short = specs.clone();`. `PartSpecs` derives `Copy`, so that trips `clippy::clone_on_copy` under `-D warnings`. The writer fixed it forward, but a future reader copying the block reproduces a red gate. | Corrected in the plan text. | **fixed in plan** |
 | later | `test-integrity` | Whichever slice writes the SQL completeness predicate | Nothing binds the SQL predicate to `is_complete` except a prose sentence in the module doc. They can drift silently, which is precisely the anti-goal the spec names — and prose is not a mechanism. | One `#[sqlx::test]` inserting a part per category at each side of the completeness boundary, asserting the SQL predicate agrees with `is_complete`. It is the only thing that makes that anti-goal enforceable rather than aspirational. | **open — raise when the predicate is written** |
 | 1.5 | `hygiene` — **second occurrence, so it is a pattern** | The controller's brief for Task 1.5 | The brief said "do not touch `part_repo.rs`" while Task 1.5's own Step 1 requires adding `suggested_since` there — `usecase::parts::suggest` calls it and the crate does not compile without it. Same shape as the 1.1 finding below: a blanket file ban contradicting the plan's own `Files:` list. Twice is a pattern in how the briefs are written, not two slips. | Brief prohibitions are derived FROM the plan's `Files:` list, never composed independently of it. Name only files the plan does not assign to that task. Both writers were right to follow the plan over the ban; a more literal one would have shipped code that does not compile. | **noted; binding on every later brief** |
