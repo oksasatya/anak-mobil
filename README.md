@@ -6,7 +6,7 @@ An Indonesia-first automotive platform: a digital garage that remembers your car
 
 Three things make it different from a forum with a database attached. Every vehicle is a **structured record** — brand, model, generation, variant — so a question about wheel fitment can be answered with numbers instead of guesses. Every AI answer carries **evidence you can open**, pointing back at the build or repair it came from. And every answer states **how confident it is**, computed from how well the evidence matches *your* car, never from how similar the text looked.
 
-> **Early.** The backend serves two health probes and nothing else — no schema, no authentication, no business endpoints. The landing page is a holding page. The mobile app and backoffice are not scaffolded. Nothing is deployed anywhere. See [Status](#status) for what actually exists.
+> **Early.** The backend has accounts, a garage, and a browsable catalog — no builds, no service history, nothing AI. The landing page is a holding page. The mobile app and backoffice are not scaffolded. Nothing is deployed anywhere. See [Status](#status) for what actually exists.
 
 ---
 
@@ -233,7 +233,9 @@ Accounts exist: register, sign in, refresh, sign out, with sessions in Redis so 
 
 Vehicles exist: add, edit, delete, reorder, with plate, VIN, and purchase price held in a separate table so a query cannot return them by accident.
 
-There is still **no service history, no builds, and no catalog browsing** — the rest of AM-360, split into slices.
+The catalog can be browsed, and a car it does not have can be reported.
+
+There is still **no service history and no builds** — the rest of AM-360, split into slices.
 
 `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
 
@@ -243,8 +245,8 @@ Work is tracked in Jira project **AM**. The build order and its reasoning live o
 
 | Next | |
 |---|---|
-| AM-360 | Catalog browsing and model suggestions (slice 2) |
 | AM-360 | Service history with cost privacy (slice 3) |
+| AM-360 | Server-computed summaries and reminders (slice 4) |
 | AM-341 | The real landing page |
 
 ---

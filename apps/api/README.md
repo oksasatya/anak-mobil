@@ -22,10 +22,10 @@ make be-migrate    # apply migrations and exit
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 ```
 
-A throwaway pair of dependencies, if you have Docker:
+A throwaway pair of dependencies, if you have Docker. **`pgvector/pgvector`, not `postgres`** — the first migration enables the extension, so the stock image cannot migrate at all:
 
 ```bash
-docker run -d --name am-pg -e POSTGRES_PASSWORD=anakmobil -e POSTGRES_DB=anakmobil -p 5432:5432 postgres:17-alpine
+docker run -d --name am-pg -e POSTGRES_PASSWORD=anakmobil -e POSTGRES_DB=anakmobil -p 5432:5432 pgvector/pgvector:pg17
 ```
 
 ```bash
@@ -34,7 +34,8 @@ docker run -d --name am-redis -p 6379:6379 redis:7-alpine
 
 ## What answers today
 
-Two routes. There is no schema, no authentication, and no business endpoint yet.
+Accounts, the caller's own cars, and the catalog. Builds, service history, and
+everything AI are not built yet.
 
 | Route | Answers | Checks |
 |---|---|---|
@@ -50,6 +51,11 @@ Two routes. There is no schema, no authentication, and no business endpoint yet.
 | `PUT /vehicles/{id}` | `204` | ownership |
 | `DELETE /vehicles/{id}` | `204` | ownership |
 | `PUT /vehicles/order` | `204` | every listed car is the caller's |
+| `GET /catalog/brands` | `200` | — |
+| `GET /catalog/brands/{id}/models` | `200` | — |
+| `GET /catalog/models/{id}/generations` | `200` | — |
+| `GET /catalog/generations/{id}/variants` | `200` | — |
+| `POST /catalog/suggestions` | `201` | brand and model present, daily allowance |
 
 ```bash
 curl -i localhost:8080/readyz
@@ -99,6 +105,18 @@ The same shape repeats in the types: `VehicleResponse` has no field for a plate.
 **A car can exist without a catalog match.** Somebody whose model is missing must still be able to add their car, or the suggest-a-model flow has nothing to attach to and the catalog can only ever describe cars that were already enterable.
 
 **Money crosses the wire as a decimal string.** JSON numbers are doubles in most clients, and the scale is pinned rather than inherited — a `BigDecimal` round trip otherwise renders 185000000.50 as `185000000.5000`, the same number in a different shape that every client would have to normalise.
+
+## The catalog, and its escape hatch
+
+Four read levels walking brand → model → generation → variant. Unpaginated: there are a few dozen car brands sold in Indonesia and a handful of variants per generation, so paginating a list that fits on one screen costs the client a loop for nothing.
+
+An unknown parent yields an **empty level, not a 404**. The client is walking a tree it was just handed, and it treats "no models" and "no brand" the same way.
+
+**The catalog will never be complete.** Grey imports, unlisted facelifts, models that lasted two years. So `POST /catalog/suggestions` records what is missing, and a car can be added with a typed description instead of a catalog match — otherwise the catalog could only ever describe cars that were already in it.
+
+Suggestions are **not** deduplicated. The same missing model reported forty times is the clearest demand signal curation will ever get; merging them throws it away. Grouping happens when the queue is read.
+
+A suggestion **outlives the account that filed it** (`ON DELETE SET NULL`). What was reported is catalog work, not personal data, and losing it because somebody later closed their account would discard the only record that the gap exists.
 
 ## A request, end to end
 

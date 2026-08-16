@@ -301,6 +301,11 @@ fn to_api_error(err: GarageError) -> ApiError {
         // "Not yours" and "does not exist" answer identically, so an id cannot
         // be probed for existence.
         GarageError::NotFound | GarageError::ReorderMismatch => ApiError::not_found(),
+        // A caller's mistake, not ours — the id they sent is not in the
+        // catalog. Left to the foreign key this would surface as a 500.
+        GarageError::UnknownVariant => ApiError::validation(serde_json::json!({
+            "variant_id": "Varian tidak ada di katalog."
+        })),
         GarageError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),
     }
 }

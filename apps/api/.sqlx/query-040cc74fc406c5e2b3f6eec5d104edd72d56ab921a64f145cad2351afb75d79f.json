@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO vehicle_variants\n            (id, generation_id, name, slug, engine_code, displacement_cc,\n             pcd_bolt_count, pcd_diameter_mm, center_bore_mm, oem_et_mm)\n         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int2",
+        "Numeric",
+        "Numeric",
+        "Int2"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "040cc74fc406c5e2b3f6eec5d104edd72d56ab921a64f145cad2351afb75d79f"
+}

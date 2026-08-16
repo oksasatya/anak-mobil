@@ -384,3 +384,23 @@ async fn the_list_is_one_query_regardless_of_how_many_cars() {
         "every car needs a display name"
     );
 }
+
+#[tokio::test]
+async fn a_variant_id_that_is_not_in_the_catalog_is_a_client_error() {
+    // Left to the foreign key this surfaces as a 500 — an internal failure —
+    // when it is really the caller sending an id that does not exist.
+    let app = app!();
+    let token = a_signed_in_person(&app).await;
+
+    let response = send(
+        &app,
+        "POST",
+        "/vehicles",
+        Some(json!({"variant_id": uuid::Uuid::now_v7()})),
+        Some(&token),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(json(response).await["error"]["details"]["variant_id"].is_string());
+}

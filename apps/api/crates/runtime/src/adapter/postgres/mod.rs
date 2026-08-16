@@ -1,10 +1,14 @@
-//! The Postgres connection pool and the migration runner.
+//! The Postgres connection pool, the migration runner, and the repositories.
 //!
-//! No queries yet, which is why the `sqlx` `macros` feature is still off:
-//! `query!` needs either a live schema or a committed `.sqlx` cache, and the
-//! cache only exists once something is querying. Repositories arrive with the
-//! stories that need them, each bringing its own migration.
+//! Queries go through the `sqlx` macros, so they are checked against the real
+//! schema at compile time. That needs either a reachable `DATABASE_URL` or the
+//! committed `.sqlx` cache — CI uses the cache, which is why
+//! `cargo sqlx prepare` has to run whenever a query changes.
+//!
+//! Repositories arrive with the stories that need them, each bringing its own
+//! migration.
 
+pub mod catalog_repo;
 pub mod migrate;
 pub mod user_repo;
 pub mod vehicle_repo;
