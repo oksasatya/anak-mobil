@@ -91,6 +91,12 @@ The first is the one to watch. What breaks first is not speed but **ordering** �
 
 Projected full scope is six JavaScript workspaces, five with builds. That is still below where a task runner's cache pays for its configuration, so expect the ordering trigger to fire before the timing ones.
 
+## Environment
+
+One `.env`, at the repository root, and it belongs to the **backend**. `dotenvy` walks up from the working directory so the API finds it from `apps/api`, and the `Makefile` loads and exports it to every recipe — which is what makes `make be-test` mean what it says, since the integration tests report **passing** when `DATABASE_URL` and `REDIS_URL` are absent.
+
+**Frontend apps do not read it, and must not be made to.** Astro and Vite load `.env` from their own project directory by default, so `apps/landing` gets its own if it ever needs one. This is a security boundary, not a filing preference: Vite inlines only `PUBLIC_`/`VITE_`-prefixed values into client code, but the whole file is read into the build process, and one misconfigured plugin or `define` is enough. A credential that reaches a client bundle cannot be recalled — so `DATABASE_URL` is not merely unexposed there, it is absent.
+
 ## Branching
 
 ```
