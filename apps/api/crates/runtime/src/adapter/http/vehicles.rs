@@ -69,6 +69,10 @@ pub struct PrivateResponse {
     pub plate: Option<String>,
     pub vin: Option<String>,
     pub purchase_price: Option<String>,
+    #[serde(
+        with = "crate::shared::iso_date::option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub purchase_date: Option<Date>,
 }
 
@@ -120,6 +124,7 @@ pub struct PrivateRequest {
     pub vin: Option<String>,
     /// A decimal string, matching what the response emits.
     pub purchase_price: Option<String>,
+    #[serde(with = "crate::shared::iso_date::option", default)]
     pub purchase_date: Option<Date>,
 }
 

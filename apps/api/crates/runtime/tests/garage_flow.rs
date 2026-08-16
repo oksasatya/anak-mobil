@@ -404,3 +404,41 @@ async fn a_variant_id_that_is_not_in_the_catalog_is_a_client_error() {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(json(response).await["error"]["details"]["variant_id"].is_string());
 }
+
+#[tokio::test]
+async fn a_purchase_date_survives_the_round_trip() {
+    // Regression. `time::Date`'s own serde encoding is `[year, ordinal]`, not
+    // an ISO string — so this field shipped rejecting every date a client
+    // sent, and no test touched it. It failed quietly because nothing here
+    // had a date until service history needed one.
+    let app = app!();
+    let token = a_signed_in_person(&app).await;
+
+    let created = send(
+        &app,
+        "POST",
+        "/vehicles",
+        Some(json!({
+            "described_as": "Toyota Avanza 2019",
+            "private": { "plate": "B 7777 GGG", "purchase_date": "2020-05-01" }
+        })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(
+        created.status(),
+        StatusCode::CREATED,
+        "a normal date string must be accepted"
+    );
+
+    let id = json(created).await["data"]["id"]
+        .as_str()
+        .expect("id")
+        .to_owned();
+    let body = json(send(&app, "GET", &format!("/vehicles/{id}"), None, Some(&token)).await).await;
+
+    assert_eq!(
+        body["data"]["private"]["purchase_date"], "2020-05-01",
+        "a date must come back as a date, not as a pair of numbers"
+    );
+}
