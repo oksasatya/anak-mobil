@@ -54,7 +54,7 @@ The execution loop pastes **both** blocks below into every task brief, unchanged
 - Repo root /Volumes/Project/anak-mobil. Backend apps/api. Branch from `dev`, never `main`.
 - Postgres 17.11 and Redis run in OrbStack:
     DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil
-    REDIS_URL=redis://127.0.0.1:56379
+    REDIS_URL=redis://127.0.0.1:6379
 - Migrations live in apps/api/crates/runtime/migrations/, NOT the workspace root —
   sqlx::migrate!() resolves relative to CARGO_MANIFEST_DIR.
   Create with:  cd apps/api/crates/runtime && sqlx migrate add -r <name>      (always -r)
@@ -2550,7 +2550,7 @@ async fn a_service_record_still_works_with_english_categories() {
 ```bash
 cd /Volumes/Project/anak-mobil/apps/api
 DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil \
-REDIS_URL=redis://127.0.0.1:56379 \
+REDIS_URL=redis://127.0.0.1:6379 \
 cargo test --workspace
 ```
 
@@ -4598,7 +4598,7 @@ async fn a_removed_modification_still_counts_after_a_merge() {
 cd /Volumes/Project/anak-mobil/apps/api
 for i in $(seq 1 20); do
   DATABASE_URL=postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil \
-  REDIS_URL=redis://127.0.0.1:56379 \
+  REDIS_URL=redis://127.0.0.1:6379 \
   cargo test --workspace two_curators_merging_the_same_part -- --exact --nocapture || break
 done
 ```
@@ -4646,6 +4646,7 @@ Block A, verbatim, in every brief. The five that cost the most if rediscovered r
 2. **The `#[sqlx(rename_all)]` / `#[serde(rename_all)]` derives couple the Rust variant name to both the SQL label and the JSON wire form.** The Postgres `RENAME VALUE` and the Rust variant rename must land in the same commit — either alone leaves the enum unable to decode its own column, and `service_repo.rs` contains no snake_case literal a grep would find.
 3. **`cargo sqlx prepare` while the crate does not compile writes an incomplete cache** that then fails `--check` in CI. Fix compilation first.
 4. **`ConnectInfo` must be inserted into a test request's extensions** or every rate-limited route fails.
+4b. **Run the gates through `make`, never a bare `cargo clippy`.** Without `SQLX_OFFLINE=true` the sqlx macros load `.env` themselves and query the LIVE database, and its nullability inference can differ from the committed `.sqlx` cache — producing a compile error in a file nobody touched. The `Makefile` sets and exports `SQLX_OFFLINE ?= true`, so `make be-lint` / `make be-test` are the honest commands. Redis is on **6379** (the machine's own), not 56379; Postgres is on 55432.
 5. **`time::Date`'s serde is not ISO 8601.** Every `Date` on the wire goes through `crate::shared::iso_date`.
 
 Verified before planning, so no task should re-check it: **Postgres is 17.11, and `ALTER TYPE … RENAME VALUE` runs inside a transaction with no table rewrite.** Eight statements, not nine — `tune_up` is already English and renaming a value to itself errors.
