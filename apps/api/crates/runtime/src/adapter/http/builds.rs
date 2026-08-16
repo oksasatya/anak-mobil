@@ -9,21 +9,23 @@
 //! endpoints differ only in whether a build is created on demand.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
+use sqlx::types::BigDecimal;
 use time::Date;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 use crate::adapter::http::auth::Authenticated;
 use crate::adapter::postgres::build_repo::{
-    Build, BuildInput, Modification, ModificationInput, Visibility,
+    Build, BuildInput, BuildPhoto, Modification, ModificationInput, Visibility,
 };
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
+use crate::shared::pagination::{Page, clamp_limit};
 use crate::shared::response::{ApiResponse, NoContent};
 use crate::shared::validation::{self, DecimalSpec};
-use crate::usecase::builds::{self, BuildError, PartChoice};
+use crate::usecase::builds::{self, BuildDetail, BuildError, PartChoice};
 
 /// `modifications.cost` is `NUMERIC(14, 2)`, the same shape as
 /// `service_records.cost`.
@@ -66,6 +68,73 @@ impl From<Modification> for ModificationResponse {
     }
 }
 
+impl ModificationResponse {
+    /// The same mapping as [`From<Modification>`], except `cost` goes through
+    /// [`visible_cost`] instead of always being shown.
+    ///
+    /// Every other place this type is built already knows the caller owns
+    /// the car — `for_vehicle` and the modification-write endpoints all fail
+    /// with [`BuildError::NotFound`] before reaching a response otherwise.
+    /// `GET /builds` is the one place that is not true: the build on the
+    /// page may belong to somebody else, and only its `visibility` said the
+    /// caller may see the build at all — never its cost.
+    fn filtered(
+        m: Modification,
+        cost_visibility: Visibility,
+        owner_id: Uuid,
+        viewer_id: Uuid,
+    ) -> Self {
+        let cost = visible_cost(m.cost.clone(), cost_visibility, owner_id, viewer_id);
+        Self {
+            cost,
+            ..Self::from(m)
+        }
+    }
+}
+
+/// The cost, if this viewer may see it.
+///
+/// Filtered here, server-side, from the `cost_visibility` the row already
+/// carries — no extra query, and the client is never trusted to hide a
+/// number. A cost that reaches the wire cannot be recalled.
+///
+/// What each of the three settings means for a modification's cost:
+/// - `Private` — only the vehicle's owner. Everyone else gets `null`.
+/// - `Community` — any signed-in caller, which today is every caller: every
+///   endpoint on this server requires authentication, the same fact
+///   [`crate::adapter::postgres::build_repo::find_build_visible`] notes for
+///   the build itself.
+/// - `Public` — the same as `Community`, for the same reason, until an
+///   unauthenticated surface exists to actually tell them apart.
+///
+/// The owner's own view is unconditional: `owner_id == viewer_id`
+/// short-circuits the setting, so a `Private` build never hides its own
+/// numbers from the person who paid them.
+#[must_use]
+fn visible_cost(
+    cost: Option<BigDecimal>,
+    setting: Visibility,
+    owner_id: Uuid,
+    viewer_id: Uuid,
+) -> Option<String> {
+    // Listed explicitly rather than `!= Private`, and the difference is what
+    // happens when the enum grows. This repo extends closed sets with
+    // `ALTER TYPE … ADD VALUE`, so an `Unlisted` or `Followers` added later
+    // would make every cost on the platform visible to everyone under `!=` —
+    // no compile error, no failing test, no review signal.
+    //
+    // Naming the permitted values fails CLOSED instead: a new variant hides
+    // costs until somebody decides otherwise, and this match is where they are
+    // forced to decide. Same property the `ServiceCategory` conversions rely
+    // on, where the compiler reports the drift rather than a user does.
+    let allowed =
+        owner_id == viewer_id || matches!(setting, Visibility::Community | Visibility::Public);
+    allowed
+        .then_some(cost)
+        .flatten()
+        .map(|amount| amount.with_scale(2).to_string())
+}
+
 #[derive(Debug, Serialize)]
 pub struct BuildResponse {
     pub id: Uuid,
@@ -83,6 +152,63 @@ impl BuildResponse {
             notes: build.notes,
             visibility: build.visibility,
             modifications: modifications.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuildPhotoResponse {
+    pub id: Uuid,
+    pub object_key: String,
+    pub position: i32,
+}
+
+impl From<BuildPhoto> for BuildPhotoResponse {
+    fn from(p: BuildPhoto) -> Self {
+        Self {
+            id: p.id,
+            object_key: p.object_key,
+            position: p.position,
+        }
+    }
+}
+
+/// One row of `GET /builds` — a build the caller may see, its modifications
+/// with `cost` filtered per [`visible_cost`], and its photos.
+#[derive(Debug, Serialize)]
+pub struct BuildListItem {
+    pub id: Uuid,
+    pub vehicle_id: Uuid,
+    pub notes: Option<String>,
+    pub visibility: Visibility,
+    pub nickname: Option<String>,
+    pub described_as: Option<String>,
+    pub modifications: Vec<ModificationResponse>,
+    pub photos: Vec<BuildPhotoResponse>,
+}
+
+impl BuildListItem {
+    fn from_detail(detail: BuildDetail, viewer_id: Uuid) -> Self {
+        let BuildDetail {
+            build,
+            modifications,
+            photos,
+        } = detail;
+        let cost_visibility = build.cost_visibility;
+        let owner_id = build.owner_id;
+
+        Self {
+            id: build.id,
+            vehicle_id: build.vehicle_id,
+            notes: build.notes,
+            visibility: build.visibility,
+            nickname: build.nickname,
+            described_as: build.described_as,
+            modifications: modifications
+                .into_iter()
+                .map(|m| ModificationResponse::filtered(m, cost_visibility, owner_id, viewer_id))
+                .collect(),
+            photos: photos.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -220,6 +346,48 @@ impl ModificationRequest {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BuildsQuery {
+    /// A plain build id, not an encoded [`crate::shared::pagination::DateCursor`]
+    /// — build ids are UUID v7 and therefore already sortable, per
+    /// [`crate::adapter::postgres::build_repo::page_visible`].
+    pub after: Option<Uuid>,
+    pub limit: Option<u16>,
+}
+
+/// `GET /builds`
+///
+/// A page of builds this caller may see — their own, plus every
+/// `community`/`public` build — newest first. A build the caller may not see
+/// is absent from the page, never present with its fields blanked.
+///
+/// # Errors
+///
+/// A storage failure.
+pub async fn list(
+    State(state): State<AppState>,
+    caller: Authenticated,
+    Query(query): Query<BuildsQuery>,
+) -> Result<ApiResponse<Page<BuildListItem>>, ApiError> {
+    let page = builds::page(
+        &state.pool,
+        caller.user_id,
+        query.after,
+        clamp_limit(query.limit),
+    )
+    .await
+    .map_err(to_api_error)?;
+
+    Ok(ApiResponse::ok(Page {
+        items: page
+            .items
+            .into_iter()
+            .map(|detail| BuildListItem::from_detail(detail, caller.user_id))
+            .collect(),
+        next_cursor: page.next_cursor,
+    }))
+}
+
 /// `PUT /vehicles/{id}/build`
 ///
 /// # Errors
@@ -316,7 +484,7 @@ pub async fn remove_modification(
 fn to_api_error(err: BuildError) -> ApiError {
     match err {
         BuildError::NotFound => ApiError::not_found(),
-        BuildError::TooManyParts => ApiError::too_many_requests(),
+        BuildError::TooManyParts => ApiError::parts_daily_limit(),
         // A foreign key violation here means the caller named a `part_id` that
         // does not exist — a well-formed but stale UUID, which is an ordinary
         // thing for a client holding an old list. Postgres 23503 reaching the
@@ -476,5 +644,49 @@ mod tests {
                 .expect("tomorrow exists"),
         );
         assert!(request.check().is_ok());
+    }
+
+    #[test]
+    fn a_stranger_never_sees_a_private_cost_and_the_owner_always_sees_their_own() {
+        // Five mutations of this function survived the whole suite, including
+        // deleting the filter from the call path outright — the highest-risk
+        // line in the module, held there by nothing. This is the cheapest
+        // thing that changes that: no database, four arguments, one Option.
+        let owner = Uuid::now_v7();
+        let stranger = Uuid::now_v7();
+        let cost = || Some(BigDecimal::from(1_200_000));
+
+        // The owner check comes first and unconditionally. A private setting
+        // must never hide a person's own numbers from themselves.
+        for setting in [
+            Visibility::Private,
+            Visibility::Community,
+            Visibility::Public,
+        ] {
+            assert_eq!(
+                visible_cost(cost(), setting, owner, owner),
+                Some("1200000.00".to_owned()),
+                "the owner must see their own cost at {setting:?}"
+            );
+        }
+
+        assert_eq!(
+            visible_cost(cost(), Visibility::Private, owner, stranger),
+            None,
+            "a private cost must not reach a stranger"
+        );
+        for setting in [Visibility::Community, Visibility::Public] {
+            assert_eq!(
+                visible_cost(cost(), setting, owner, stranger),
+                Some("1200000.00".to_owned()),
+                "{setting:?} is visible to any signed-in caller today"
+            );
+        }
+
+        assert_eq!(
+            visible_cost(None, Visibility::Public, owner, owner),
+            None,
+            "no cost recorded stays no cost, not a zero"
+        );
     }
 }

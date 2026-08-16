@@ -93,6 +93,14 @@ pub enum ErrorCode {
     Forbidden,
     Conflict,
     TooManyRequests,
+    /// Today's allowance for suggesting new parts is spent.
+    ///
+    /// Namespaced and separate from [`Self::TooManyRequests`] because the
+    /// waits are different by three orders of magnitude. The generic message
+    /// says "wait a moment", which is true of a rate limiter measured in
+    /// seconds and false of an allowance that refills over twenty-four hours —
+    /// somebody told to wait a moment retries into the same wall for hours.
+    PartsDailyLimit,
     Internal,
     ServiceUnavailable,
 }
@@ -108,6 +116,7 @@ impl ErrorCode {
             Self::Forbidden => "forbidden",
             Self::Conflict => "conflict",
             Self::TooManyRequests => "too_many_requests",
+            Self::PartsDailyLimit => "parts.daily_limit",
             Self::Internal => "internal_error",
             Self::ServiceUnavailable => "service_unavailable",
         }
@@ -136,6 +145,12 @@ impl ErrorCode {
             (Self::Conflict, Lang::Id) => "Data ini sudah berubah. Muat ulang, lalu coba lagi.",
             (Self::Conflict, Lang::English) => "This has changed. Reload and try again.",
 
+            (Self::PartsDailyLimit, Lang::Id) => {
+                "Jatah part baru untuk hari ini sudah habis. Coba lagi besok."
+            }
+            (Self::PartsDailyLimit, Lang::English) => {
+                "Today's allowance for new parts is spent. Try again tomorrow."
+            }
             (Self::TooManyRequests, Lang::Id) => "Terlalu banyak permintaan. Tunggu sebentar.",
             (Self::TooManyRequests, Lang::English) => "Too many requests. Wait a moment.",
 

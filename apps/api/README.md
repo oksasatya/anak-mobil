@@ -51,6 +51,7 @@ parts catalog. Everything AI is not built yet.
 | `DELETE /vehicles/{id}` | `204` | ownership |
 | `PUT /vehicles/order` | `204` | every listed car is the caller's |
 | `GET /vehicles/{id}/summary` | `200` | ownership — spend, and what the car is due for |
+| `GET /builds` | `200` | own builds plus `community`/`public` ones, cursor paged; cost hidden per `cost_visibility` unless the caller owns the car |
 | `PUT /vehicles/{id}/build` | `204` | ownership |
 | `GET /vehicles/{id}/build` | `200` | ownership — the build with its modifications, two queries |
 | `GET /vehicles/{id}/services` | `200` | ownership, cursor paged, newest first |
@@ -66,9 +67,9 @@ parts catalog. Everything AI is not built yet.
 | `GET /catalog/models/{id}/generations` | `200` | — |
 | `GET /catalog/generations/{id}/variants` | `200` | — |
 | `POST /catalog/suggestions` | `201` | brand and model present, daily allowance |
-| `GET /parts` | `200` | category and text filter, limit capped |
+| `GET /parts` | `200` | category and text filter, limit capped; each part carries its two evidence counts |
 | `POST /parts` | `201` | specs inside their ranges, daily allowance |
-| `GET /parts/{id}` | `200` | — |
+| `GET /parts/{id}` | `200` | evidence counts, same as the list |
 
 ```bash
 curl -i localhost:8080/readyz

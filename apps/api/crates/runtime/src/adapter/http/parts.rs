@@ -18,6 +18,7 @@ use uuid::Uuid;
 use anakmobil_domain::build::policy;
 
 use crate::adapter::http::auth::Authenticated;
+use crate::adapter::postgres::build_repo::EvidenceCount;
 use crate::adapter::postgres::part_repo::{
     Part, PartCategory, PartInput, PartStatus, SuspensionKind,
 };
@@ -58,10 +59,20 @@ pub struct PartResponse {
     /// Indonesian label off each one.
     pub missing_specs: Vec<&'static str>,
     pub is_complete: bool,
+
+    /// Builds where this part is fitted right now.
+    pub active_build_count: i64,
+    /// Builds where this part has ever been fitted, including ones where it
+    /// was later taken off. Never smaller than `active_build_count`, and
+    /// named separately so the wrong one does not end up on a screen — see
+    /// [`crate::adapter::postgres::build_repo::evidence_counts`].
+    pub ever_installed_build_count: i64,
 }
 
-impl From<Part> for PartResponse {
-    fn from(part: Part) -> Self {
+impl PartResponse {
+    /// A `From` impl cannot carry the counts as a second argument, so this
+    /// is a plain constructor instead.
+    fn new(part: Part, counts: EvidenceCount) -> Self {
         let category = policy::PartCategory::from(part.category);
         let missing = policy::missing_specs(category, &part.specs());
         // `normalized()` before `to_string()`, and it is not cosmetic.
@@ -99,6 +110,8 @@ impl From<Part> for PartResponse {
             spring_rate_kgmm: text(part.spring_rate_kgmm),
             is_complete: missing.is_empty(),
             missing_specs: missing.iter().map(|field| field.as_str()).collect(),
+            active_build_count: counts.active_build_count,
+            ever_installed_build_count: counts.ever_installed_build_count,
         }
     }
 }
@@ -280,11 +293,12 @@ fn too_long(limit: usize) -> String {
 /// A storage failure.
 pub async fn search(
     State(state): State<AppState>,
-    _caller: Authenticated,
+    caller: Authenticated,
     Query(query): Query<SearchQuery>,
 ) -> Result<ApiResponse<Vec<PartResponse>>, ApiError> {
     let parts = parts::search(
         &state.pool,
+        caller.user_id,
         query.category,
         query.q.as_deref().filter(|text| !text.trim().is_empty()),
         clamp_limit(query.limit),
@@ -292,7 +306,12 @@ pub async fn search(
     .await
     .map_err(to_api_error)?;
 
-    Ok(ApiResponse::ok(parts.into_iter().map(Into::into).collect()))
+    Ok(ApiResponse::ok(
+        parts
+            .into_iter()
+            .map(|(part, counts)| PartResponse::new(part, counts))
+            .collect(),
+    ))
 }
 
 /// `GET /parts/{id}`
@@ -302,11 +321,13 @@ pub async fn search(
 /// Not found, or a storage failure.
 pub async fn detail(
     State(state): State<AppState>,
-    _caller: Authenticated,
+    caller: Authenticated,
     Path(id): Path<Uuid>,
 ) -> Result<ApiResponse<PartResponse>, ApiError> {
-    let part = parts::detail(&state.pool, id).await.map_err(to_api_error)?;
-    Ok(ApiResponse::ok(part.into()))
+    let (part, counts) = parts::detail(&state.pool, caller.user_id, id)
+        .await
+        .map_err(to_api_error)?;
+    Ok(ApiResponse::ok(PartResponse::new(part, counts)))
 }
 
 /// `POST /parts`
@@ -333,7 +354,7 @@ pub async fn suggest(
 pub(super) fn to_api_error(err: PartError) -> ApiError {
     match err {
         PartError::NotFound => ApiError::not_found(),
-        PartError::TooManyParts => ApiError::too_many_requests(),
+        PartError::TooManyParts => ApiError::parts_daily_limit(),
         PartError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),
     }
 }

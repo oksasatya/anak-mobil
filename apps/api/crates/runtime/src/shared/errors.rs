@@ -73,6 +73,16 @@ impl ApiError {
         Self::bare(ErrorCode::TooManyRequests)
     }
 
+    /// 429 for a daily allowance rather than a rate limiter.
+    ///
+    /// Separate from [`Self::too_many_requests`] because the wait differs by
+    /// three orders of magnitude, and "wait a moment" sends somebody back into
+    /// the same wall for the rest of the day.
+    #[must_use]
+    pub const fn parts_daily_limit() -> Self {
+        Self::bare(ErrorCode::PartsDailyLimit)
+    }
+
     #[must_use]
     pub const fn service_unavailable() -> Self {
         Self::bare(ErrorCode::ServiceUnavailable)
@@ -120,7 +130,7 @@ pub const fn status_for(code: ErrorCode) -> StatusCode {
         ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
         ErrorCode::Forbidden => StatusCode::FORBIDDEN,
         ErrorCode::Conflict => StatusCode::CONFLICT,
-        ErrorCode::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
+        ErrorCode::TooManyRequests | ErrorCode::PartsDailyLimit => StatusCode::TOO_MANY_REQUESTS,
         ErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         ErrorCode::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
     }
