@@ -302,4 +302,52 @@ mod tests {
         assert_eq!(SpecField::OffsetEtMm.as_str(), "offset_et_mm");
         assert_eq!(SpecField::CenterBoreMm.as_str(), "center_bore_mm");
     }
+
+    #[test]
+    fn a_bare_tyre_names_all_three() {
+        // The sibling of `a_bare_wheel_names_all_six`, and it exists because a
+        // review proved by mutation that two of these three checks could be
+        // deleted with the whole suite still green: the tyre case only ever
+        // blanked the aspect ratio, so width and rim diameter were never what
+        // made an assertion true.
+        //
+        // What that would cost: a tyre carrying only an aspect ratio reads as
+        // complete, the SQL predicate mirroring this agrees, and the fitment
+        // engine compares a tyre with no width. Wheels and suspension were
+        // pinned against exactly that; tyres were not.
+        assert_eq!(
+            missing_specs(PartCategory::Tyres, &PartSpecs::default()),
+            vec![
+                SpecField::TyreWidthMm,
+                SpecField::TyreAspectRatio,
+                SpecField::TyreRimDiameterIn,
+            ]
+        );
+    }
+
+    #[test]
+    fn every_spec_field_names_its_column() {
+        // `as_str` is the column name AND the wire name — the join between this
+        // policy, the client's label lookup, and any SQL keyed by column. A
+        // typo raises nothing anywhere; the client simply renders a key that
+        // maps to nothing. Nine of the eleven mappings were unasserted, so a
+        // typo in any of them passed the suite.
+        let mapped = [
+            (SpecField::WheelDiameterIn, "wheel_diameter_in"),
+            (SpecField::WheelWidthIn, "wheel_width_in"),
+            (SpecField::OffsetEtMm, "offset_et_mm"),
+            (SpecField::PcdBoltCount, "pcd_bolt_count"),
+            (SpecField::PcdDiameterMm, "pcd_diameter_mm"),
+            (SpecField::CenterBoreMm, "center_bore_mm"),
+            (SpecField::TyreWidthMm, "tyre_width_mm"),
+            (SpecField::TyreAspectRatio, "tyre_aspect_ratio"),
+            (SpecField::TyreRimDiameterIn, "tyre_rim_diameter_in"),
+            (SpecField::SuspensionKind, "suspension_kind"),
+            (SpecField::SpringRateKgmm, "spring_rate_kgmm"),
+        ];
+
+        for (field, column) in mapped {
+            assert_eq!(field.as_str(), column, "{field:?} does not name its column");
+        }
+    }
 }
