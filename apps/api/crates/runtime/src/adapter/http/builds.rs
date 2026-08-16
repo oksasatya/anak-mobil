@@ -110,13 +110,25 @@ impl ModificationResponse {
 /// The owner's own view is unconditional: `owner_id == viewer_id`
 /// short-circuits the setting, so a `Private` build never hides its own
 /// numbers from the person who paid them.
+#[must_use]
 fn visible_cost(
     cost: Option<BigDecimal>,
     setting: Visibility,
     owner_id: Uuid,
     viewer_id: Uuid,
 ) -> Option<String> {
-    let allowed = owner_id == viewer_id || setting != Visibility::Private;
+    // Listed explicitly rather than `!= Private`, and the difference is what
+    // happens when the enum grows. This repo extends closed sets with
+    // `ALTER TYPE … ADD VALUE`, so an `Unlisted` or `Followers` added later
+    // would make every cost on the platform visible to everyone under `!=` —
+    // no compile error, no failing test, no review signal.
+    //
+    // Naming the permitted values fails CLOSED instead: a new variant hides
+    // costs until somebody decides otherwise, and this match is where they are
+    // forced to decide. Same property the `ServiceCategory` conversions rely
+    // on, where the compiler reports the drift rather than a user does.
+    let allowed =
+        owner_id == viewer_id || matches!(setting, Visibility::Community | Visibility::Public);
     allowed
         .then_some(cost)
         .flatten()
@@ -632,5 +644,49 @@ mod tests {
                 .expect("tomorrow exists"),
         );
         assert!(request.check().is_ok());
+    }
+
+    #[test]
+    fn a_stranger_never_sees_a_private_cost_and_the_owner_always_sees_their_own() {
+        // Five mutations of this function survived the whole suite, including
+        // deleting the filter from the call path outright — the highest-risk
+        // line in the module, held there by nothing. This is the cheapest
+        // thing that changes that: no database, four arguments, one Option.
+        let owner = Uuid::now_v7();
+        let stranger = Uuid::now_v7();
+        let cost = || Some(BigDecimal::from(1_200_000));
+
+        // The owner check comes first and unconditionally. A private setting
+        // must never hide a person's own numbers from themselves.
+        for setting in [
+            Visibility::Private,
+            Visibility::Community,
+            Visibility::Public,
+        ] {
+            assert_eq!(
+                visible_cost(cost(), setting, owner, owner),
+                Some("1200000.00".to_owned()),
+                "the owner must see their own cost at {setting:?}"
+            );
+        }
+
+        assert_eq!(
+            visible_cost(cost(), Visibility::Private, owner, stranger),
+            None,
+            "a private cost must not reach a stranger"
+        );
+        for setting in [Visibility::Community, Visibility::Public] {
+            assert_eq!(
+                visible_cost(cost(), setting, owner, stranger),
+                Some("1200000.00".to_owned()),
+                "{setting:?} is visible to any signed-in caller today"
+            );
+        }
+
+        assert_eq!(
+            visible_cost(None, Visibility::Public, owner, owner),
+            None,
+            "no cost recorded stays no cost, not a zero"
+        );
     }
 }

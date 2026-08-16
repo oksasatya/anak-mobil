@@ -114,7 +114,7 @@ pub async fn detail(
     let count = build_repo::evidence_counts(&mut conn, &[part.id], viewer_id, None)
         .await?
         .into_iter()
-        .next()
+        .find(|c| c.part_id == part.id)
         .unwrap_or_else(|| zero_counts(part.id));
 
     Ok((part, count))
