@@ -4702,7 +4702,7 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 | 1.4 `part_repo` | 1 | **landed** | Compiled first try against the real schema — no `Brake`/`Brakes` mismatch, no missing column, zero `#[sqlx(rename)]` overrides. Controller re-ran `make be-test` · clippy · `sqlx --check`, all EXIT=0. `search` text path is `O(n)` by design with a `ponytail:` marker naming the pg_trgm upgrade at ~10k rows. |
 | 1.5 Parts endpoints | 1 | **landed** | `GET/POST /parts`, `GET /parts/{id}`. `missing_specs` derived per response, never stored. `PARTS_PER_DAY = 20`. Controller re-ran fmt · clippy · boundary · sqlx-check · offline build · be-test, all EXIT=0. |
 | 1.6 Slice 1 end to end | 1 | **landed** | 13 tests, 3 sabotages each breaking exactly the test that describes it. Found the decimal round-trip defect and correctly left it failing rather than bending the test. |
-| 2.1 `builds`, `modifications`, `cost_visibility` | 2 | unstarted | |
+| 2.1 `builds`, `modifications`, `cost_visibility` | 2 | **landed** | 16 CHECK assertions proven in both directions, revert leaves no orphan enum type. Controller re-ran the gate. **Reviewer not yet dispatched — the controller was diverted and forgot; it is queued, not waived.** |
 | 2.2 `build_repo` | 2 | unstarted | |
 | 2.3 Build use case and endpoints | 2 | unstarted | |
 | 2.4 Slice 2 end to end | 2 | unstarted | |
