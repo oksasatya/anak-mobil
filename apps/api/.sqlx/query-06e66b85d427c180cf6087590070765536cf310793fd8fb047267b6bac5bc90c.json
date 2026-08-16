@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE parts p\n        SET canonical_part_id = u.canonical\n        FROM UNNEST($1::uuid[], $2::uuid[]) AS u(id, canonical)\n        WHERE p.id = u.id\n          AND p.canonical_part_id IS DISTINCT FROM u.canonical\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06e66b85d427c180cf6087590070765536cf310793fd8fb047267b6bac5bc90c"
+}

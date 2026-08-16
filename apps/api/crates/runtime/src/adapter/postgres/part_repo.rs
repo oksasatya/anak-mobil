@@ -422,6 +422,234 @@ pub async fn find_or_create_pending(
     .await
 }
 
+/// One row of the merge log.
+///
+/// Only the four columns the merge use case reads. `merged_by` and
+/// `undone_by` are provenance for a screen nobody has built yet, and both are
+/// `ON DELETE SET NULL`, so reading them here would invite a caller to treat a
+/// closed account as a missing merge.
+#[derive(Debug, Clone)]
+pub struct MergeRow {
+    pub id: Uuid,
+    pub source_part_id: Uuid,
+    pub target_part_id: Uuid,
+    /// `Some` means this merge has already been undone.
+    pub undone_at: Option<time::OffsetDateTime>,
+}
+
+/// Serialise every merge and unmerge against each other for this transaction.
+///
+/// Released on commit or rollback — there is no unlock to forget.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn lock_merges(conn: &mut PgConnection) -> Result<(), sqlx::Error> {
+    // ponytail: one global merge lock rather than per-component row locks.
+    // Merges are a handful of human-initiated curation actions a day, and a
+    // single lock removes the resolve-then-lock race that per-component
+    // locking has to handle with a retry loop. If merging is ever automated,
+    // the upgrade is SELECT id FROM parts WHERE id = ANY($1) OR
+    // canonical_part_id = ANY($1) ORDER BY id FOR UPDATE over the union of
+    // both components, plus a re-resolve under the lock.
+    //
+    // That re-resolve is not optional, because CYCLE PREVENTION RESTS ENTIRELY
+    // ON THIS LOCK. `part_merges_one_live_per_source` refuses a second merge
+    // out of one source, but `A → B` and `B → A` are different index keys and
+    // do not conflict — two curators racing them would both be admitted, and
+    // the only thing stopping that today is that they cannot run at the same
+    // time. Take the upgrade without re-resolving under the new lock and the
+    // guard in `usecase::part_merge::merge` becomes decorative.
+    sqlx::query!(r#"SELECT pg_advisory_xact_lock(hashtext('part_merge'))"#)
+        .execute(conn)
+        .await
+        .map(drop)
+}
+
+/// Every merge that still stands, as `(source, target)`.
+///
+/// The whole log, not the component's slice. Scoping it to a component means
+/// first resolving the component, which is the read whose result the lock is
+/// meant to protect — so reading everything is both simpler and safer.
+///
+/// Complexity: `O(M)` over the standing merges, and it is a sequential scan.
+/// No index narrows it and none could: the predicate is `undone_at IS NULL`,
+/// which is most of the table, and there is no index on either part column
+/// that a scan-free plan could use — `part_merges_one_live_per_source` is a
+/// partial UNIQUE index on `source_part_id`, which enforces a constraint
+/// rather than serving this query. The table grows by one row per curation
+/// action performed by hand.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn live_merges(conn: &mut PgConnection) -> Result<Vec<(Uuid, Uuid)>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT source_part_id, target_part_id
+        FROM part_merges
+        WHERE undone_at IS NULL
+        "#
+    )
+    .fetch_all(conn)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.source_part_id, row.target_part_id))
+        .collect())
+}
+
+/// Every part in the components rooted at these ids.
+///
+/// One hop, and that is correct **only** because `canonical_part_id` is kept
+/// flat by the merge use case — every member of a component either is its root
+/// or points straight at it. Pass roots, never a part part-way down a chain:
+/// nothing points at a non-root, so a non-root id would return itself and the
+/// component's other members would be silently left holding a stale cache.
+///
+/// Complexity: `O(log n + k)` — the primary key for the `id` half and
+/// `parts_canonical_idx` for the other.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn component_members(
+    conn: &mut PgConnection,
+    roots: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT id
+        FROM parts
+        WHERE id = ANY($1) OR canonical_part_id = ANY($1)
+        ORDER BY id
+        "#,
+        roots,
+    )
+    .fetch_all(conn)
+    .await
+}
+
+/// Write the recomputed cache for these parts, in one statement.
+///
+/// `UNNEST` of two arrays rather than a loop of `UPDATE`s: the loop is the N+1
+/// this file would grow, and it is invisible because it reads as a loop over
+/// parts rather than over awaits.
+///
+/// Complexity: `O(k log n)` for `k` parts, one round trip.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn set_canonical(
+    conn: &mut PgConnection,
+    ids: &[Uuid],
+    canonical: &[Option<Uuid>],
+) -> Result<(), sqlx::Error> {
+    // `IS DISTINCT FROM` means a part whose canonical form did not change is
+    // not written, so its `updated_at` trigger does not fire. Without it every
+    // merge stamps every part in the component as modified, and a curation
+    // screen sorted by `updated_at` reshuffles on an operation that changed
+    // nothing about those rows.
+    sqlx::query!(
+        r#"
+        UPDATE parts p
+        SET canonical_part_id = u.canonical
+        FROM UNNEST($1::uuid[], $2::uuid[]) AS u(id, canonical)
+        WHERE p.id = u.id
+          AND p.canonical_part_id IS DISTINCT FROM u.canonical
+        "#,
+        ids,
+        canonical as &[Option<Uuid>],
+    )
+    .execute(conn)
+    .await
+    .map(drop)
+}
+
+/// Append a merge to the log.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`]; a unique violation means this source already has a
+/// merge that stands, which the caller reads as a conflict rather than a
+/// failure.
+pub async fn insert_merge(
+    conn: &mut PgConnection,
+    id: Uuid,
+    merged_by: Uuid,
+    source: Uuid,
+    target: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT INTO part_merges (id, source_part_id, target_part_id, merged_by)
+        VALUES ($1, $2, $3, $4)
+        "#,
+        id,
+        source,
+        target,
+        merged_by,
+    )
+    .execute(conn)
+    .await
+    .map(drop)
+}
+
+/// One merge by id.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn find_merge(
+    conn: &mut PgConnection,
+    id: Uuid,
+) -> Result<Option<MergeRow>, sqlx::Error> {
+    sqlx::query_as!(
+        MergeRow,
+        r#"
+        SELECT id, source_part_id, target_part_id, undone_at
+        FROM part_merges
+        WHERE id = $1
+        "#,
+        id,
+    )
+    .fetch_optional(conn)
+    .await
+}
+
+/// Record that a merge has been undone.
+///
+/// The only `UPDATE` this table ever takes, and it touches only the two undo
+/// columns — the table is append-only in every other respect.
+///
+/// `AND undone_at IS NULL` makes the statement safe to issue twice even though
+/// the caller has already checked: without it a second undo would overwrite
+/// the first one's timestamp and quietly rewrite who did it.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn mark_merge_undone(
+    conn: &mut PgConnection,
+    id: Uuid,
+    undone_by: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE part_merges
+        SET undone_by = $2, undone_at = now()
+        WHERE id = $1 AND undone_at IS NULL
+        "#,
+        id,
+        undone_by,
+    )
+    .execute(conn)
+    .await
+    .map(drop)
+}
+
 /// How many parts this person has added since a moment in time.
 ///
 /// The same shape as `catalog_repo::suggestions_since` — the queue is read by

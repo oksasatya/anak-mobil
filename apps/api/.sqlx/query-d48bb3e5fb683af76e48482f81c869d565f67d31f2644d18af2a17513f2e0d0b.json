@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE part_merges\n        SET undone_by = $2, undone_at = now()\n        WHERE id = $1 AND undone_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d48bb3e5fb683af76e48482f81c869d565f67d31f2644d18af2a17513f2e0d0b"
+}
