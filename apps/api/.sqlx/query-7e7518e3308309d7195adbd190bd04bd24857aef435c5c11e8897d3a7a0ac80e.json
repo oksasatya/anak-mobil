@@ -1,0 +1,148 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, name, slug, engine_code, displacement_cc, power_hp, torque_nm,\n            pcd_bolt_count, pcd_diameter_mm, center_bore_mm, oem_et_mm\n        FROM vehicle_variants\n        WHERE generation_id = $1\n        ORDER BY name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "engine_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "engine_code"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "displacement_cc",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "displacement_cc"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "power_hp",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "power_hp"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "torque_nm",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "torque_nm"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "pcd_bolt_count",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "pcd_bolt_count"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "pcd_diameter_mm",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "pcd_diameter_mm"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "center_bore_mm",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "center_bore_mm"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "oem_et_mm",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "vehicle_variants",
+            "name": "oem_et_mm"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "7e7518e3308309d7195adbd190bd04bd24857aef435c5c11e8897d3a7a0ac80e"
+}

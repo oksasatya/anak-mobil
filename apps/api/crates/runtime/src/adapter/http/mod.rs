@@ -1,6 +1,7 @@
 //! The HTTP adapter: routes, middleware, and the server itself.
 
 pub mod auth;
+pub mod catalog;
 pub mod probe;
 pub mod request_id;
 pub mod vehicles;
@@ -35,6 +36,14 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/logout", post(auth::logout))
+        .route("/catalog/brands", get(catalog::brands))
+        .route("/catalog/brands/{id}/models", get(catalog::models))
+        .route(
+            "/catalog/models/{id}/generations",
+            get(catalog::generations),
+        )
+        .route("/catalog/generations/{id}/variants", get(catalog::variants))
+        .route("/catalog/suggestions", post(catalog::suggest))
         // `/vehicles/order` is declared before `/vehicles/{id}` so the literal
         // wins; otherwise "order" is parsed as a vehicle id and every reorder
         // is a 400.

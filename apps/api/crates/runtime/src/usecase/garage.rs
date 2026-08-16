@@ -8,6 +8,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::adapter::postgres::catalog_repo;
 use crate::adapter::postgres::vehicle_repo::{self, Vehicle, VehicleInput, VehiclePrivate};
 
 /// Why a garage operation did not succeed.
@@ -22,6 +23,13 @@ pub enum GarageError {
     NotFound,
     #[error("the reorder listed a vehicle that is not yours")]
     ReorderMismatch,
+    /// The catalog has no such variant.
+    ///
+    /// Checked before the insert rather than left to the foreign key, because
+    /// a constraint violation surfaces as a 500 — an internal failure — when
+    /// it is really the caller having sent an id that does not exist.
+    #[error("no such variant in the catalog")]
+    UnknownVariant,
     #[error("the database could not be reached")]
     Database(#[from] sqlx::Error),
 }
@@ -76,6 +84,7 @@ pub async fn add(
     let id = Uuid::now_v7();
 
     let mut tx = pool.begin().await?;
+    check_variant(&mut tx, input.variant_id).await?;
     vehicle_repo::insert(&mut tx, id, owner_id, input).await?;
     if let Some(private) = private {
         vehicle_repo::upsert_private(&mut tx, owner_id, id, private).await?;
@@ -97,10 +106,30 @@ pub async fn update(
     input: &VehicleInput,
 ) -> Result<(), GarageError> {
     let mut conn = pool.acquire().await?;
+    check_variant(&mut conn, input.variant_id).await?;
+
     if vehicle_repo::update(&mut conn, owner_id, id, input).await? {
         Ok(())
     } else {
         Err(GarageError::NotFound)
+    }
+}
+
+/// Reject a variant id the catalog does not have.
+///
+/// `None` is always fine — a car with no catalog match is the normal case for
+/// somebody whose model is missing.
+async fn check_variant(
+    conn: &mut sqlx::PgConnection,
+    variant_id: Option<Uuid>,
+) -> Result<(), GarageError> {
+    let Some(variant_id) = variant_id else {
+        return Ok(());
+    };
+    if catalog_repo::variant_exists(conn, variant_id).await? {
+        Ok(())
+    } else {
+        Err(GarageError::UnknownVariant)
     }
 }
 

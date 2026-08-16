@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT suggested_by FROM catalog_suggestions WHERE model = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "suggested_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog_suggestions",
+            "name": "suggested_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "7b7d8dd04e51f8cb2af54fa2d5ec52518fabdd18b4f0e2674d31233e409ea21f"
+}

@@ -34,3 +34,6 @@ coverage/
 
 # Tooling caches
 .impeccable/hook.cache.json
+
+# graphify - generated knowledge graph (rebuild with `graphify update .`)
+graphify-out/
