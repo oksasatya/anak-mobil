@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE service_records s SET\n            service_date = $3, mileage_km = $4, category = $5,\n            parts_replaced = $6, garage_name = $7, cost = $8, notes = $9\n        FROM vehicles v\n        WHERE v.id = s.vehicle_id AND v.owner_id = $1 AND s.id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Date",
+        "Int4",
+        {
+          "Custom": {
+            "name": "service_category",
+            "kind": {
+              "Enum": [
+                "oli_mesin",
+                "oli_transmisi",
+                "rem",
+                "kaki_kaki",
+                "tune_up",
+                "ac",
+                "kelistrikan",
+                "body",
+                "lainnya"
+              ]
+            }
+          }
+        },
+        "TextArray",
+        "Text",
+        "Numeric",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b44aca6b7a60d22bd4fc81008c0ab1360dac467b0d5fbebbdc05f7a12f7cf1f3"
+}
