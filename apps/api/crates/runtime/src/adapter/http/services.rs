@@ -264,7 +264,7 @@ pub async fn delete(
     Ok(NoContent)
 }
 
-fn to_api_error(err: HistoryError) -> ApiError {
+pub(super) fn to_api_error(err: HistoryError) -> ApiError {
     match err {
         HistoryError::NotFound => ApiError::not_found(),
         HistoryError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),

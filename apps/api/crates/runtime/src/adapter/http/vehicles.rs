@@ -19,11 +19,13 @@ use time::Date;
 use uuid::Uuid;
 
 use crate::adapter::http::auth::Authenticated;
+use crate::adapter::http::summary::{self, ListSummaryResponse};
 use crate::adapter::postgres::vehicle_repo::{VehicleInput, VehiclePrivate};
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::response::{ApiResponse, NoContent};
 use crate::usecase::garage::{self, GarageError};
+use crate::usecase::service_summary;
 
 /// A car, as anyone may see it. There is deliberately nowhere here to put a
 /// plate.
@@ -37,6 +39,11 @@ pub struct VehicleResponse {
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
     pub position: i32,
+    /// Present on the list, absent on the detail — the detail screen asks
+    /// `/vehicles/{id}/summary` for the full version rather than carrying
+    /// a cut-down copy it would then have to reconcile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ListSummaryResponse>,
 }
 
 impl From<crate::adapter::postgres::vehicle_repo::Vehicle> for VehicleResponse {
@@ -59,6 +66,7 @@ impl From<crate::adapter::postgres::vehicle_repo::Vehicle> for VehicleResponse {
             colour: v.colour,
             mileage_km: v.mileage_km,
             position: v.position,
+            summary: None,
         }
     }
 }
@@ -190,8 +198,24 @@ pub async fn list(
     let vehicles = garage::list(&state.pool, caller.user_id)
         .await
         .map_err(to_api_error)?;
+
+    // Two queries for every car's totals and reminders, not two per car.
+    // A car with no history is absent from the map and gets the zeroed
+    // summary rather than a missing field the client has to handle.
+    let mut summaries = service_summary::for_list(&state.pool, caller.user_id, summary::today())
+        .await
+        .map_err(crate::adapter::http::services::to_api_error)?;
+
     Ok(ApiResponse::ok(
-        vehicles.into_iter().map(Into::into).collect(),
+        vehicles
+            .into_iter()
+            .map(|v| {
+                let id = v.id;
+                let mut response = VehicleResponse::from(v);
+                response.summary = Some(summaries.remove(&id).unwrap_or_default().into());
+                response
+            })
+            .collect(),
     ))
 }
 
@@ -403,6 +427,7 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            summary: None,
         };
         let json = serde_json::to_string(&response).expect("serialising");
 
