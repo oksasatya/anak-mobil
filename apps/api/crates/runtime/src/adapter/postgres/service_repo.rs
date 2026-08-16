@@ -18,15 +18,15 @@ use crate::shared::pagination::DateCursor;
 #[sqlx(type_name = "service_category", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceCategory {
-    OliMesin,
-    OliTransmisi,
-    Rem,
-    KakiKaki,
+    EngineOil,
+    TransmissionOil,
+    Brakes,
+    Suspension,
     TuneUp,
-    Ac,
-    Kelistrikan,
-    Body,
-    Lainnya,
+    AirConditioning,
+    Electrical,
+    Bodywork,
+    Other,
 }
 
 impl From<ServiceCategory> for policy::ServiceCategory {
@@ -37,15 +37,15 @@ impl From<ServiceCategory> for policy::ServiceCategory {
     /// it non-exhaustive.
     fn from(category: ServiceCategory) -> Self {
         match category {
-            ServiceCategory::OliMesin => Self::OliMesin,
-            ServiceCategory::OliTransmisi => Self::OliTransmisi,
-            ServiceCategory::Rem => Self::Rem,
-            ServiceCategory::KakiKaki => Self::KakiKaki,
+            ServiceCategory::EngineOil => Self::EngineOil,
+            ServiceCategory::TransmissionOil => Self::TransmissionOil,
+            ServiceCategory::Brakes => Self::Brakes,
+            ServiceCategory::Suspension => Self::Suspension,
             ServiceCategory::TuneUp => Self::TuneUp,
-            ServiceCategory::Ac => Self::Ac,
-            ServiceCategory::Kelistrikan => Self::Kelistrikan,
-            ServiceCategory::Body => Self::Body,
-            ServiceCategory::Lainnya => Self::Lainnya,
+            ServiceCategory::AirConditioning => Self::AirConditioning,
+            ServiceCategory::Electrical => Self::Electrical,
+            ServiceCategory::Bodywork => Self::Bodywork,
+            ServiceCategory::Other => Self::Other,
         }
     }
 }
@@ -54,15 +54,15 @@ impl From<policy::ServiceCategory> for ServiceCategory {
     /// The way back, for rendering a reminder the domain produced.
     fn from(category: policy::ServiceCategory) -> Self {
         match category {
-            policy::ServiceCategory::OliMesin => Self::OliMesin,
-            policy::ServiceCategory::OliTransmisi => Self::OliTransmisi,
-            policy::ServiceCategory::Rem => Self::Rem,
-            policy::ServiceCategory::KakiKaki => Self::KakiKaki,
+            policy::ServiceCategory::EngineOil => Self::EngineOil,
+            policy::ServiceCategory::TransmissionOil => Self::TransmissionOil,
+            policy::ServiceCategory::Brakes => Self::Brakes,
+            policy::ServiceCategory::Suspension => Self::Suspension,
             policy::ServiceCategory::TuneUp => Self::TuneUp,
-            policy::ServiceCategory::Ac => Self::Ac,
-            policy::ServiceCategory::Kelistrikan => Self::Kelistrikan,
-            policy::ServiceCategory::Body => Self::Body,
-            policy::ServiceCategory::Lainnya => Self::Lainnya,
+            policy::ServiceCategory::AirConditioning => Self::AirConditioning,
+            policy::ServiceCategory::Electrical => Self::Electrical,
+            policy::ServiceCategory::Bodywork => Self::Bodywork,
+            policy::ServiceCategory::Other => Self::Other,
         }
     }
 }

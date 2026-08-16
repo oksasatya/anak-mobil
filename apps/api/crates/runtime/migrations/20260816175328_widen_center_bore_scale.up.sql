@@ -1,0 +1,21 @@
+-- Centre bore needs two decimal places, and one is not a rounding nicety.
+--
+-- NUMERIC(5,1) silently rounds 66.06 to 66.1 on insert. The idempotent
+-- `find_or_create_pending` path then re-selects with the value the caller
+-- actually sent, matches nothing, and the second POST of an identical body
+-- fails with RowNotFound — surfaced to the client as a 500 where the
+-- acceptance criteria promise a 201 with the same id.
+--
+-- That is not a hypothetical input. 66.06 mm is a real VAG/Mercedes centre
+-- bore, so the coercion is reachable by a common wheel, and the wheels
+-- people actually fit are exactly the ones this table exists to describe.
+--
+-- The scale is widened rather than the input rejected, because a bore the
+-- market genuinely uses must be storable. The boundary separately refuses a
+-- scale no column can hold, so nothing can silently round again.
+--
+-- Only this column moves. PCD diameters (114.3, 100, 108), wheel widths
+-- (8.5, 9.5), and spring rates are one-decimal quantities in practice, and
+-- widening them would invite precision nobody measures.
+ALTER TABLE parts
+    ALTER COLUMN center_bore_mm TYPE NUMERIC(6, 2);

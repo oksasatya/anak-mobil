@@ -10,6 +10,7 @@
 
 pub mod catalog_repo;
 pub mod migrate;
+pub mod part_repo;
 pub mod service_repo;
 pub mod summary_repo;
 pub mod user_repo;
