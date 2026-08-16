@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            v.id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.year,\n            v.colour,\n            v.mileage_km,\n            v.position,\n            CASE WHEN va.id IS NULL THEN NULL\n                 ELSE b.name || ' ' || m.name || ' ' || va.name\n            END AS catalog_name\n        FROM vehicles v\n        LEFT JOIN vehicle_variants va    ON va.id = v.variant_id\n        LEFT JOIN vehicle_generations g  ON g.id = va.generation_id\n        LEFT JOIN vehicle_models m       ON m.id = g.model_id\n        LEFT JOIN brands b               ON b.id = m.brand_id\n        WHERE v.owner_id = $1 AND v.id = $2\n        ",
+  "query": "\n        SELECT\n            v.id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.year,\n            v.colour,\n            v.mileage_km,\n            v.position,\n            v.cost_visibility AS \"cost_visibility: Visibility\",\n            CASE WHEN va.id IS NULL THEN NULL\n                 ELSE b.name || ' ' || m.name || ' ' || va.name\n            END AS catalog_name\n        FROM vehicles v\n        LEFT JOIN vehicle_variants va    ON va.id = v.variant_id\n        LEFT JOIN vehicle_generations g  ON g.id = va.generation_id\n        LEFT JOIN vehicle_models m       ON m.id = g.model_id\n        LEFT JOIN brands b               ON b.id = m.brand_id\n        WHERE v.owner_id = $1 AND v.id = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,28 @@
       },
       {
         "ordinal": 8,
+        "name": "cost_visibility: Visibility",
+        "type_info": {
+          "Custom": {
+            "name": "visibility",
+            "kind": {
+              "Enum": [
+                "private",
+                "community",
+                "public"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "cost_visibility"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
         "name": "catalog_name",
         "type_info": "Text",
         "origin": "Expression"
@@ -113,8 +135,9 @@
       true,
       true,
       false,
+      false,
       null
     ]
   },
-  "hash": "b4beecbeb8113e9c85f05bfe15097d8cae12be092017a4232bf6f7a6e78eab42"
+  "hash": "4f4c6b515865d79349e981ef82d53d5752a1cfebf3273e1130fd55ef310ff463"
 }

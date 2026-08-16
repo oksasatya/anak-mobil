@@ -25,10 +25,8 @@ use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::pagination::clamp_limit;
 use crate::shared::response::ApiResponse;
+use crate::shared::validation::{self, DecimalSpec, OUT_OF_RANGE};
 use crate::usecase::parts::{self, PartError};
-
-/// The message every out-of-range spec shares.
-const OUT_OF_RANGE: &str = "Angka di luar rentang yang masuk akal.";
 
 #[derive(Debug, Serialize)]
 pub struct PartResponse {
@@ -133,21 +131,6 @@ pub struct SearchQuery {
     pub limit: Option<u16>,
 }
 
-/// One numeric spec's name, its raw text, and the range the column accepts.
-///
-/// A struct rather than five positional arguments: `clippy::too_many_arguments`
-/// starts at seven, and a tuple of five unnamed values at every call site is
-/// how the width and the diameter get swapped.
-struct DecimalSpec<'a> {
-    field: &'static str,
-    raw: Option<&'a str>,
-    min: f64,
-    max: f64,
-    /// Decimal places the column can hold. Anything longer is refused rather
-    /// than rounded — see [`PartRequest::check`].
-    scale: i64,
-}
-
 impl PartRequest {
     /// Validate, and turn the decimal strings into `BigDecimal`s.
     ///
@@ -156,7 +139,13 @@ impl PartRequest {
     /// and this is the message. Without it a caller gets a 500 from a
     /// constraint violation, which breaks AC3's promise that a part is usable
     /// the moment it is typed — a promise a 500 does not keep.
-    fn check(&self) -> Result<PartInput, ApiError> {
+    ///
+    /// `pub(super)` rather than private: `builds.rs`'s inline-part branch on
+    /// `ModificationRequest` reuses this exact validation rather than a
+    /// second copy of these ranges, which is what keeps them from drifting
+    /// out of step with the `CHECK` constraints in one place but not the
+    /// other.
+    pub(super) fn check(&self) -> Result<PartInput, ApiError> {
         let mut problems = serde_json::Map::new();
 
         let brand = self.brand.trim();
@@ -183,40 +172,16 @@ impl PartRequest {
             problems.insert("product_name".into(), too_long(MAX_PRODUCT_NAME).into());
         }
 
+        // Refused, not rounded. Postgres coerces a value past the column's
+        // scale silently, and the idempotent insert then re-selects with what
+        // the caller sent — which no longer matches what was stored, so a
+        // second identical POST fails as "not found" and reaches the client
+        // as a 500. Rounding here would only move the mismatch; storing 66.1
+        // for a typed 66.06 is the same quiet alteration this module refuses
+        // everywhere else. See [`validation::decimal`] for the guard itself
+        // and why `normalized()` runs before `fractional_digit_count()`.
         let mut decimal = |spec: DecimalSpec<'_>| -> Option<BigDecimal> {
-            let raw = spec.raw?.trim();
-            if raw.is_empty() {
-                return None;
-            }
-            let Ok(value) = raw.parse::<BigDecimal>() else {
-                problems.insert(spec.field.into(), OUT_OF_RANGE.into());
-                return None;
-            };
-            if !in_range(&value, spec.min, spec.max) {
-                problems.insert(spec.field.into(), OUT_OF_RANGE.into());
-                return None;
-            }
-            // Refused, not rounded. Postgres coerces a value past the column's
-            // scale silently, and the idempotent insert then re-selects with
-            // what the caller sent — which no longer matches what was stored,
-            // so a second identical POST fails as "not found" and reaches the
-            // client as a 500. Rounding here would only move the mismatch;
-            // storing 66.1 for a typed 66.06 is the same quiet alteration this
-            // module refuses everywhere else.
-            // `normalized()` first, and the omission was a regression. Bare
-            // `fractional_digit_count()` counts DECLARED scale, so "114.30"
-            // reports two digits and was refused against a one-decimal column
-            // — with a message that is factually wrong about that input, and
-            // for a value NUMERIC(5,1) stores with no loss at all. Postgres
-            // numeric equality ignores trailing zeros, so the round trip was
-            // already correct before this guard existed; a client formatting
-            // to two places worked, then got a 422. `66.066` and `8.55` still
-            // normalize to three and two digits, so the real case still fails.
-            if value.normalized().fractional_digit_count() > spec.scale {
-                problems.insert(spec.field.into(), too_precise(spec.scale).into());
-                return None;
-            }
-            Some(value)
+            validation::decimal(spec, &mut problems)
         };
 
         let wheel_diameter_in = decimal(DecimalSpec {
@@ -296,34 +261,16 @@ impl PartRequest {
     }
 }
 
-/// Whether a decimal sits inside the column's `CHECK`.
-///
-/// Compared as text through `f64` rather than by building two `BigDecimal`
-/// bounds: the bounds are whole or one-decimal numbers a `f64` represents
-/// exactly, and the comparison only decides whether to reject.
-/// Generous against real part names, far under the B-tree tuple limit.
+/// Text longer than these overflows the B-tree index behind `parts_identity`
+/// and `parts_category_brand_idx` — a 3000-character brand measured
+/// `index row size 3016 exceeds btree version 4 maximum`. Generous against
+/// real part names, far under that limit.
 const MAX_BRAND: usize = 120;
 const MAX_PRODUCT_NAME: usize = 200;
 
 /// The message for text longer than its column's index can hold.
 fn too_long(limit: usize) -> String {
     format!("Maksimal {limit} karakter.")
-}
-
-/// The message for a value carrying more decimal places than its column.
-fn too_precise(scale: i64) -> String {
-    if scale == 1 {
-        "Maksimal satu angka di belakang koma.".to_owned()
-    } else {
-        format!("Maksimal {scale} angka di belakang koma.")
-    }
-}
-
-fn in_range(value: &BigDecimal, min: f64, max: f64) -> bool {
-    value
-        .to_string()
-        .parse::<f64>()
-        .is_ok_and(|v| (min..=max).contains(&v))
 }
 
 /// `GET /parts`

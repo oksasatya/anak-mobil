@@ -3651,7 +3651,20 @@ Write each body in full following `tests/parts_flow.rs`'s helper style — the s
 /// not user-supplied — so there is no case where a row is inserted into the
 /// middle of the order, which is the failure the compound cursor exists for.
 ///
-/// Complexity: `O(log n + limit)` through `builds_visible_idx`.
+/// Complexity: NOT `O(log n + limit)`. Measured at 50k builds, 98% private:
+/// the planner declines `builds_visible_idx` for this predicate and walks
+/// `builds_pkey` backwards — 601 rows and 2419 buffers to return 21. Deep into
+/// a cursor with a viewer who owns nothing, it degrades to a `Seq Scan` over
+/// `vehicles` plus a blocking sort.
+///
+/// The cause is `OR v.owner_id = $1`: half the predicate lives on another
+/// table, and a partial index holding only non-private builds is not a
+/// superset of what the query needs — the viewer's own private builds are
+/// missing from it. No index on `builds` alone can fix that.
+///
+/// The fix, when the feed is slow enough to matter, is a `UNION ALL` of
+/// "visible" and "mine". Do not add another index here, and do not restore a
+/// complexity claim the planner does not deliver.
 ///
 /// # Errors
 ///

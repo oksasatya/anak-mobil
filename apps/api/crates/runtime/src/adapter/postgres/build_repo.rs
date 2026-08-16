@@ -115,11 +115,19 @@ pub async fn upsert_build(
 /// notes and reset a public build back to private every time they added a
 /// part.
 ///
-/// The conflict clause here is a no-op — it writes `vehicle_id` back to
-/// itself, touching nothing else — kept only so `RETURNING id` still fires
+/// The conflict clause here is a no-op for the columns that matter — it
+/// writes `vehicle_id` back to itself and leaves `notes` and `visibility`
+/// alone — kept only so `RETURNING id` still fires
 /// when the build already exists. `ON CONFLICT DO NOTHING` looks like the
 /// obvious no-op, but a `DO NOTHING` conflict returns no row at all, and the
 /// caller needs the existing build's id either way.
+///
+/// It is not a no-op for `updated_at`: `DO UPDATE` is a real update, so the
+/// `BEFORE UPDATE` trigger fires and the build's timestamp moves even when
+/// its own content did not change. Adding a modification therefore counts as
+/// touching the build. That may be exactly what a "recently updated" feed
+/// wants — it is stated here so nobody has to discover it from a surprising
+/// timestamp.
 ///
 /// # Errors
 ///
@@ -342,6 +350,20 @@ pub async fn mark_modification_removed(
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails.
+/// # The caller owns two checks this function does not make
+///
+/// This is the only function here that never reaches `vehicles.owner_id`: it
+/// takes whatever build ids it is given. That is deliberate — the caller has
+/// already resolved and authorised them — but it means two obligations live
+/// outside this file and are easy to forget at the call site.
+///
+/// **Authorisation.** Pass only build ids the caller may see.
+///
+/// **Cost.** Every row carries `cost`, unfiltered. `vehicles.cost_visibility`
+/// exists precisely to gate that, and filtering it server-side is one of the
+/// platform's non-negotiables. A community list that maps these rows straight
+/// into a response leaks every owner's spend — and the row shape carries
+/// `cost_visibility` alongside, so the data to decide with is already there.
 pub async fn modifications_for(
     conn: &mut PgConnection,
     build_ids: &[Uuid],

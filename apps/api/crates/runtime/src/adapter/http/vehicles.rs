@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::adapter::http::auth::Authenticated;
 use crate::adapter::http::summary::{self, ListSummaryResponse};
+use crate::adapter::postgres::build_repo::Visibility;
 use crate::adapter::postgres::vehicle_repo::{VehicleInput, VehiclePrivate};
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
@@ -109,9 +110,17 @@ impl From<VehiclePrivate> for PrivateResponse {
 pub struct VehicleDetailResponse {
     #[serde(flatten)]
     pub vehicle: VehicleResponse,
+    /// Who may see this car's costs. On the detail response only — the list
+    /// stays as it was, since this is a setting about money rather than
+    /// money itself.
+    pub cost_visibility: Visibility,
     /// Absent when nothing private was recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private: Option<PrivateResponse>,
+}
+
+fn default_cost_visibility() -> Visibility {
+    Visibility::Private
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +131,10 @@ pub struct VehicleRequest {
     pub year: Option<i16>,
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
+    /// An absent field must mean private, never a silent widening of who
+    /// sees what this car cost.
+    #[serde(default = "default_cost_visibility")]
+    pub cost_visibility: Visibility,
     /// Optional at creation; a person can add their plate later.
     pub private: Option<PrivateRequest>,
 }
@@ -150,6 +163,7 @@ impl VehicleRequest {
             year: self.year,
             colour: self.colour.clone(),
             mileage_km: self.mileage_km,
+            cost_visibility: self.cost_visibility,
         }
     }
 
@@ -232,9 +246,11 @@ pub async fn detail(
     let (vehicle, private) = garage::detail(&state.pool, caller.user_id, id)
         .await
         .map_err(to_api_error)?;
+    let cost_visibility = vehicle.cost_visibility;
 
     Ok(ApiResponse::ok(VehicleDetailResponse {
         vehicle: vehicle.into(),
+        cost_visibility,
         private: private.map(Into::into),
     }))
 }
@@ -351,6 +367,7 @@ mod tests {
             year: Some(2019),
             colour: None,
             mileage_km: None,
+            cost_visibility: Visibility::Private,
             private: None,
         }
     }
@@ -382,6 +399,25 @@ mod tests {
         request.described_as = None;
         request.variant_id = Some(Uuid::now_v7());
         assert!(request.check().is_ok());
+    }
+
+    #[test]
+    fn an_absent_cost_visibility_defaults_to_private() {
+        // A caller who has never heard of the field must not end up with
+        // their spend visible to the community by omission.
+        let parsed: VehicleRequest =
+            serde_json::from_str(r#"{"described_as": "Toyota Avanza 2019"}"#)
+                .expect("deserialising");
+        assert_eq!(parsed.cost_visibility, Visibility::Private);
+    }
+
+    #[test]
+    fn an_explicit_cost_visibility_is_honoured() {
+        let parsed: VehicleRequest = serde_json::from_str(
+            r#"{"described_as": "Toyota Avanza 2019", "cost_visibility": "community"}"#,
+        )
+        .expect("deserialising");
+        assert_eq!(parsed.cost_visibility, Visibility::Community);
     }
 
     #[test]
@@ -450,6 +486,7 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            cost_visibility: Visibility::Private,
             catalog_name: None,
         };
         assert!(!VehicleResponse::from(unnamed).name.is_empty());
@@ -466,6 +503,7 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            cost_visibility: Visibility::Private,
             catalog_name: Some("Toyota Avanza 1.5 G".to_owned()),
         };
         assert_eq!(VehicleResponse::from(named).name, "Si Putih");

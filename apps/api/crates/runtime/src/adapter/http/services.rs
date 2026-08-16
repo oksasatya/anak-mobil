@@ -16,7 +16,6 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
-use sqlx::types::BigDecimal;
 use time::Date;
 use uuid::Uuid;
 
@@ -26,7 +25,12 @@ use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::pagination::{DateCursor, Page, clamp_limit};
 use crate::shared::response::{ApiResponse, NoContent};
+use crate::shared::validation::{self, DecimalSpec};
 use crate::usecase::service_history::{self, HistoryError};
+
+/// `service_records.cost` and `modifications.cost` are both `NUMERIC(14, 2)`
+/// — the same shape, the same guard.
+const MAX_COST: f64 = 999_999_999_999.99;
 
 #[derive(Debug, Serialize)]
 pub struct ServiceResponse {
@@ -97,22 +101,22 @@ impl ServiceRequest {
             problems.insert("mileage_km".into(), "Tidak boleh negatif.".into());
         }
 
-        // The sign is checked on the text rather than on the parsed value:
-        // `BigDecimal` has no cheap "is this negative", and a negative cost
-        // is a caller having typed a minus sign.
-        let cost = match &self.cost {
-            Some(raw) => match raw.trim().parse::<BigDecimal>() {
-                Ok(amount) if !raw.trim().starts_with('-') => Some(amount),
-                _ => {
-                    problems.insert(
-                        "cost".into(),
-                        "Harus berupa angka tidak negatif, contoh: 1200000".into(),
-                    );
-                    None
-                }
+        // The same guard `parts.rs` uses, not a bare parse-and-check-the-sign.
+        // A bare parse accepted "1200000.755" and silently lost the last
+        // digit to Postgres's rounding, and accepted a value past
+        // NUMERIC(14, 2)'s range as a `22003 numeric field overflow` that
+        // reached the client as a 500 instead of a 422 — the same defect
+        // `modifications.cost` was built to avoid from the first commit.
+        let cost = validation::decimal(
+            DecimalSpec {
+                field: "cost",
+                raw: self.cost.as_deref(),
+                min: 0.0,
+                max: MAX_COST,
+                scale: 2,
             },
-            None => None,
-        };
+            &mut problems,
+        );
 
         if !problems.is_empty() {
             return Err(ApiError::validation(serde_json::Value::Object(problems)));
@@ -150,7 +154,11 @@ impl ServiceRequest {
 /// Indonesia is up to seven hours ahead, so a service recorded late in the
 /// evening there is "tomorrow" to a UTC server. The check allows that day
 /// rather than rejecting a record for being in a time zone.
-fn today() -> Date {
+///
+/// `pub(super)` rather than private: `builds.rs` needs the identical
+/// allowance for `install_date`, and re-deriving it there would be a second
+/// place to keep in step with this one.
+pub(super) fn today() -> Date {
     time::OffsetDateTime::now_utc()
         .date()
         .next_day()
@@ -320,6 +328,27 @@ mod tests {
         request.cost = Some("1200000.75".to_owned());
         let parsed = request.check().expect("valid").cost.expect("a cost");
         assert_eq!(parsed.to_string(), "1200000.75");
+    }
+
+    #[test]
+    fn a_cost_the_column_cannot_hold_is_refused_rather_than_rounded() {
+        // `service_records.cost` is NUMERIC(14, 2), the same shape as
+        // `modifications.cost`. A bare parse-and-sign-check let this through,
+        // Postgres rounded it silently, and the idempotent path this guard
+        // exists for elsewhere would have failed on a duplicate request.
+        let mut request = a_request();
+        request.cost = Some("1200000.755".to_owned());
+        assert!(request.check().is_err());
+    }
+
+    #[test]
+    fn a_cost_past_the_columns_range_is_refused_here_rather_than_by_the_database() {
+        // Past NUMERIC(14, 2)'s twelve integer digits: a `22003 numeric field
+        // overflow` reaching the caller as a 500, on the endpoint whose own
+        // criteria promise a 422.
+        let mut request = a_request();
+        request.cost = Some("9999999999999999".to_owned());
+        assert!(request.check().is_err());
     }
 
     #[test]

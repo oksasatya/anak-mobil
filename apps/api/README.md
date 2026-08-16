@@ -33,8 +33,8 @@ Redis is assumed to be running on your machine already, which is why it is not s
 
 ## What answers today
 
-Accounts, the caller's own cars, the catalog, service history, and the parts
-catalog. Builds and everything AI are not built yet.
+Accounts, the caller's own cars, the catalog, service history, builds, and the
+parts catalog. Everything AI is not built yet.
 
 | Route | Answers | Checks |
 |---|---|---|
@@ -51,11 +51,16 @@ catalog. Builds and everything AI are not built yet.
 | `DELETE /vehicles/{id}` | `204` | ownership |
 | `PUT /vehicles/order` | `204` | every listed car is the caller's |
 | `GET /vehicles/{id}/summary` | `200` | ownership — spend, and what the car is due for |
+| `PUT /vehicles/{id}/build` | `204` | ownership |
+| `GET /vehicles/{id}/build` | `200` | ownership — the build with its modifications, two queries |
 | `GET /vehicles/{id}/services` | `200` | ownership, cursor paged, newest first |
 | `POST /vehicles/{id}/services` | `201` | ownership, date not in the future, cost not negative |
+| `POST /vehicles/{id}/build/modifications` | `201` | ownership; `part_id` or an inline `part`, never both; cost inside its range and scale |
 | `GET /services/{id}` | `200` | ownership |
 | `PUT /services/{id}` | `204` | ownership |
 | `DELETE /services/{id}` | `204` | ownership |
+| `PUT /modifications/{id}` | `204` | ownership; same part-choice and cost rules as the add |
+| `DELETE /modifications/{id}` | `204` | ownership, idempotent — a repeat call still answers `204` |
 | `GET /catalog/brands` | `200` | — |
 | `GET /catalog/brands/{id}/models` | `200` | — |
 | `GET /catalog/models/{id}/generations` | `200` | — |

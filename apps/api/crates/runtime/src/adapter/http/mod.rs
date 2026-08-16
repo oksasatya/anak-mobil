@@ -1,6 +1,7 @@
 //! The HTTP adapter: routes, middleware, and the server itself.
 
 pub mod auth;
+pub mod builds;
 pub mod catalog;
 pub mod parts;
 pub mod probe;
@@ -56,14 +57,26 @@ pub fn router(state: AppState) -> Router {
         .route("/vehicles", get(vehicles::list).post(vehicles::create))
         .route("/vehicles/{id}/summary", get(summary::vehicle))
         .route(
+            "/vehicles/{id}/build",
+            get(builds::detail).put(builds::save),
+        )
+        .route(
             "/vehicles/{id}/services",
             get(services::list).post(services::create),
+        )
+        .route(
+            "/vehicles/{id}/build/modifications",
+            post(builds::add_modification),
         )
         .route(
             "/services/{id}",
             get(services::detail)
                 .put(services::update)
                 .delete(services::delete),
+        )
+        .route(
+            "/modifications/{id}",
+            put(builds::update_modification).delete(builds::remove_modification),
         )
         .route(
             "/vehicles/{id}",

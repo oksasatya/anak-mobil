@@ -98,11 +98,22 @@ CREATE TABLE modifications (
 -- key that is ALSO unique is the exception, and this is it.
 CREATE INDEX build_photos_build_idx    ON build_photos (build_id, position, id);
 
--- The sort is in the key on purpose. `modifications_for` orders by
--- (build_id, install_date DESC NULLS LAST, id); leaving install_date out makes
--- the planner add an Incremental Sort on top of the scan, which is cheap per
--- build and free to avoid at creation. `service_records_timeline_idx` is the
--- same shape solved the same way.
+-- `install_date` is in the key, and honesty about what that buys: measured,
+-- nothing. `modifications_for` uses `= ANY($1)`, the planner picks a Bitmap
+-- Index Scan, and a bitmap reorders by physical page position — index order is
+-- discarded by construction, so the Sort node appears whatever the key holds.
+-- The plans are byte-identical with and without `install_date`.
+--
+-- An earlier comment here claimed it removed an Incremental Sort. Both halves
+-- were wrong: it is a full quicksort, and it is present either way. The claim
+-- was inherited rather than measured, which is the same failure this file
+-- corrects elsewhere.
+--
+-- Kept anyway, narrowly: with `enable_bitmapscan = off` the index DOES serve
+-- the order with no Sort at all, so the ordering is genuinely available and
+-- the planner may choose it at other row counts. The cost is eight bytes per
+-- entry on what will become the largest table here. Revisit with a real plan,
+-- not with an argument.
 CREATE INDEX modifications_build_idx   ON modifications (build_id, install_date DESC NULLS LAST, id);
 
 -- "Which builds use this part" — the query behind both evidence counts.

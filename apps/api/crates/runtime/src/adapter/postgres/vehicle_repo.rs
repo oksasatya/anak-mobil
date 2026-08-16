@@ -21,6 +21,8 @@ use sqlx::types::BigDecimal;
 use time::Date;
 use uuid::Uuid;
 
+use crate::adapter::postgres::build_repo::Visibility;
+
 /// A car as a screen shows it. No private fields exist on this type.
 #[derive(Debug, Clone)]
 pub struct Vehicle {
@@ -32,6 +34,10 @@ pub struct Vehicle {
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
     pub position: i32,
+    /// Who may see what this car cost — service and modification spend
+    /// alike. Separate from a build's own `visibility`: showing the car
+    /// without showing the money is an ordinary thing to want.
+    pub cost_visibility: Visibility,
     /// Assembled from the catalog when the car is matched to a variant.
     pub catalog_name: Option<String>,
 }
@@ -46,7 +52,7 @@ pub struct VehiclePrivate {
 }
 
 /// What a caller may set on a car.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct VehicleInput {
     pub variant_id: Option<Uuid>,
     pub nickname: Option<String>,
@@ -54,6 +60,25 @@ pub struct VehicleInput {
     pub year: Option<i16>,
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
+    pub cost_visibility: Visibility,
+}
+
+impl Default for VehicleInput {
+    /// Written by hand rather than derived: `Visibility` carries no `Default`
+    /// of its own (nothing before this needed one), and an absent
+    /// `cost_visibility` must mean private, never a silent widening of who
+    /// sees a car's costs.
+    fn default() -> Self {
+        Self {
+            variant_id: None,
+            nickname: None,
+            described_as: None,
+            year: None,
+            colour: None,
+            mileage_km: None,
+            cost_visibility: Visibility::Private,
+        }
+    }
 }
 
 /// Every car this person owns, in the order they arranged.
@@ -81,6 +106,7 @@ pub async fn list_owned(
             v.colour,
             v.mileage_km,
             v.position,
+            v.cost_visibility AS "cost_visibility: Visibility",
             CASE WHEN va.id IS NULL THEN NULL
                  ELSE b.name || ' ' || m.name || ' ' || va.name
             END AS catalog_name
@@ -120,6 +146,7 @@ pub async fn find_owned(
             v.colour,
             v.mileage_km,
             v.position,
+            v.cost_visibility AS "cost_visibility: Visibility",
             CASE WHEN va.id IS NULL THEN NULL
                  ELSE b.name || ' ' || m.name || ' ' || va.name
             END AS catalog_name
@@ -180,10 +207,11 @@ pub async fn insert(
     sqlx::query!(
         r#"
         INSERT INTO vehicles
-            (id, owner_id, variant_id, nickname, described_as, year, colour, mileage_km, position)
+            (id, owner_id, variant_id, nickname, described_as, year, colour, mileage_km, position,
+             cost_visibility)
         VALUES
             ($1, $2, $3, $4, $5, $6, $7, $8,
-             COALESCE((SELECT MAX(position) + 1 FROM vehicles WHERE owner_id = $2), 0))
+             COALESCE((SELECT MAX(position) + 1 FROM vehicles WHERE owner_id = $2), 0), $9)
         "#,
         id,
         owner_id,
@@ -193,6 +221,7 @@ pub async fn insert(
         input.year,
         input.colour,
         input.mileage_km,
+        input.cost_visibility as Visibility,
     )
     .execute(conn)
     .await
@@ -214,7 +243,7 @@ pub async fn update(
         r#"
         UPDATE vehicles SET
             variant_id = $3, nickname = $4, described_as = $5,
-            year = $6, colour = $7, mileage_km = $8
+            year = $6, colour = $7, mileage_km = $8, cost_visibility = $9
         WHERE owner_id = $1 AND id = $2
         "#,
         owner_id,
@@ -225,6 +254,7 @@ pub async fn update(
         input.year,
         input.colour,
         input.mileage_km,
+        input.cost_visibility as Visibility,
     )
     .execute(conn)
     .await?;
