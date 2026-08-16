@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 
+use anakmobil_runtime::adapter::postgres::build_repo;
 use anakmobil_runtime::usecase::part_merge::{self, MergeError};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -73,6 +74,65 @@ async fn a_part(pool: &PgPool) -> Uuid {
     .await
     .expect("creating a part");
     id
+}
+
+/// A vehicle owned by `owner` — enough to hang a build off of. Free text,
+/// since these tests are not about the catalog.
+async fn a_vehicle(pool: &PgPool, owner: Uuid) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO vehicles (id, owner_id, described_as) VALUES ($1, $2, $3)",
+        id,
+        owner,
+        format!("Test car {id}"),
+    )
+    .execute(pool)
+    .await
+    .expect("creating a vehicle");
+    id
+}
+
+/// A build on that vehicle. Left at the default (private) visibility — every
+/// read below passes the vehicle's own owner as the viewer, and
+/// `evidence_counts`' filter admits a viewer's own builds regardless.
+async fn a_build_on(pool: &PgPool, vehicle_id: Uuid) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO builds (id, vehicle_id) VALUES ($1, $2)",
+        id,
+        vehicle_id,
+    )
+    .execute(pool)
+    .await
+    .expect("creating a build");
+    id
+}
+
+/// Fit `part` to `build`, and return the modification's id.
+async fn a_modification(pool: &PgPool, build_id: Uuid, part_id: Uuid) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO modifications (id, build_id, part_id) VALUES ($1, $2, $3)",
+        id,
+        build_id,
+        part_id,
+    )
+    .execute(pool)
+    .await
+    .expect("creating a modification");
+    id
+}
+
+/// Take a modification off the car without deleting its row — the same
+/// `removed_at` semantics `usecase::builds::remove_modification` writes.
+async fn remove_modification(pool: &PgPool, id: Uuid) {
+    sqlx::query!(
+        "UPDATE modifications SET removed_at = now() WHERE id = $1",
+        id
+    )
+    .execute(pool)
+    .await
+    .expect("removing a modification");
 }
 
 async fn canonical_of(pool: &PgPool, ids: &[Uuid]) -> HashMap<Uuid, Option<Uuid>> {
@@ -368,5 +428,182 @@ async fn merging_a_part_into_its_own_component_is_refused() {
     assert!(
         matches!(backwards, Err(MergeError::SamePart)),
         "merging back into the source's own component returned {backwards:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_merge_never_rewrites_a_modification() {
+    // Tidak boleh ada penulisan ulang modifications.part_id saat merge. The
+    // anti-goal, asserted directly with a raw query against the row a real
+    // build would have written: evidence survives a wrong merge only because
+    // the original reference is still there.
+    let pool = pool!();
+    let curator = a_curator(&pool).await;
+    let source = a_part(&pool).await;
+    let target = a_part(&pool).await;
+    let vehicle = a_vehicle(&pool, curator).await;
+    let build = a_build_on(&pool, vehicle).await;
+    let modification = a_modification(&pool, build, source).await;
+
+    part_merge::merge(&pool, curator, source, target)
+        .await
+        .expect("the merge");
+
+    let stored_part_id = sqlx::query_scalar!(
+        "SELECT part_id FROM modifications WHERE id = $1",
+        modification
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("reading the modification back");
+
+    assert_eq!(
+        stored_part_id, source,
+        "the merge rewrote modifications.part_id — a bad merge would now be unrecoverable"
+    );
+}
+
+#[tokio::test]
+async fn merging_combines_the_evidence_rather_than_losing_it() {
+    // AC4, stated as the ticket states it. Two builds fitting two duplicate
+    // parts; after the merge, a count for the target is 2 — a union of the
+    // builds, not a sum of two separate counts, so fitting the same part
+    // twice on one car still would not double it (covered in build_list_flow).
+    let pool = pool!();
+    let curator = a_curator(&pool).await;
+    let source = a_part(&pool).await;
+    let target = a_part(&pool).await;
+
+    let vehicle_a = a_vehicle(&pool, curator).await;
+    let build_a = a_build_on(&pool, vehicle_a).await;
+    a_modification(&pool, build_a, source).await;
+
+    let vehicle_b = a_vehicle(&pool, curator).await;
+    let build_b = a_build_on(&pool, vehicle_b).await;
+    a_modification(&pool, build_b, target).await;
+
+    part_merge::merge(&pool, curator, source, target)
+        .await
+        .expect("the merge");
+
+    let mut conn = pool.acquire().await.expect("acquiring a connection");
+    let counted = build_repo::evidence_counts(&mut conn, &[target], curator, None)
+        .await
+        .expect("counting")
+        .into_iter()
+        .next()
+        .expect("a row for the target");
+
+    assert_eq!(
+        counted.active_build_count, 2,
+        "the merged target's count did not combine both builds"
+    );
+    assert_eq!(
+        counted.ever_installed_build_count, 2,
+        "the merged target's ever-installed count did not combine both builds"
+    );
+}
+
+#[tokio::test]
+async fn undoing_a_merge_restores_the_counts_exactly() {
+    // Not "some earlier value" — the exact ones. Task 4.2 already proved the
+    // cache is restored; this proves the number a person actually reads is.
+    let pool = pool!();
+    let curator = a_curator(&pool).await;
+    let source = a_part(&pool).await;
+    let target = a_part(&pool).await;
+
+    let vehicle_a = a_vehicle(&pool, curator).await;
+    let build_a = a_build_on(&pool, vehicle_a).await;
+    a_modification(&pool, build_a, source).await;
+
+    let vehicle_b = a_vehicle(&pool, curator).await;
+    let build_b = a_build_on(&pool, vehicle_b).await;
+    a_modification(&pool, build_b, target).await;
+
+    let merge_id = part_merge::merge(&pool, curator, source, target)
+        .await
+        .expect("the merge");
+
+    {
+        let mut conn = pool.acquire().await.expect("acquiring a connection");
+        let merged = build_repo::evidence_counts(&mut conn, &[target], curator, None)
+            .await
+            .expect("counting after the merge")
+            .into_iter()
+            .next()
+            .expect("a row for the target");
+        assert_eq!(
+            merged.active_build_count, 2,
+            "the merge did not combine the counts in the first place"
+        );
+    }
+
+    part_merge::unmerge(&pool, curator, merge_id)
+        .await
+        .expect("the undo");
+
+    let mut conn = pool.acquire().await.expect("acquiring a connection");
+    let restored = build_repo::evidence_counts(&mut conn, &[source, target], curator, None)
+        .await
+        .expect("counting after the undo");
+
+    let source_count = restored
+        .iter()
+        .find(|row| row.part_id == source)
+        .expect("a row for the source");
+    let target_count = restored
+        .iter()
+        .find(|row| row.part_id == target)
+        .expect("a row for the target");
+
+    assert_eq!(
+        source_count.active_build_count, 1,
+        "the source's count did not return to what it was before the merge"
+    );
+    assert_eq!(
+        target_count.active_build_count, 1,
+        "the target's count did not return to what it was before the merge"
+    );
+}
+
+#[tokio::test]
+async fn a_removed_modification_still_counts_after_a_merge() {
+    // The two counts and the merge grouping interacting: active drops when a
+    // modification is removed, ever-installed does not — and that has to
+    // stay true after the removed modification's part is merged away.
+    let pool = pool!();
+    let curator = a_curator(&pool).await;
+    let source = a_part(&pool).await;
+    let target = a_part(&pool).await;
+
+    let removed_vehicle = a_vehicle(&pool, curator).await;
+    let removed_build = a_build_on(&pool, removed_vehicle).await;
+    let removed_modification = a_modification(&pool, removed_build, source).await;
+    remove_modification(&pool, removed_modification).await;
+
+    let active_vehicle = a_vehicle(&pool, curator).await;
+    let active_build = a_build_on(&pool, active_vehicle).await;
+    a_modification(&pool, active_build, target).await;
+
+    part_merge::merge(&pool, curator, source, target)
+        .await
+        .expect("the merge");
+
+    let mut conn = pool.acquire().await.expect("acquiring a connection");
+    let counted = build_repo::evidence_counts(&mut conn, &[target], curator, None)
+        .await
+        .expect("counting")
+        .into_iter()
+        .next()
+        .expect("a row for the target");
+
+    assert_eq!(
+        counted.active_build_count, 1,
+        "a removed modification counted as active after its part was merged away"
+    );
+    assert_eq!(
+        counted.ever_installed_build_count, 2,
+        "a removed modification stopped counting as ever-installed after its part was merged away"
     );
 }

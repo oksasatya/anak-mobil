@@ -4731,8 +4731,8 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 | 3.2 Build list endpoint, counts on parts | 3 | **landed** | Cost filter now fails closed; eleven end-to-end tests, five proven by sabotage. |
 | 3.3 Slice 3 end to end | 3 | **landed** | 11 tests. Reported honestly that the cursor-probe test has no single-line sabotage rather than manufacturing one. |
 | 4.1 `part_merges` | 4 | unstarted | |
-| 4.2 `merge` and `unmerge` | 4 | in flight | |
-| 4.3 Slice 4 end to end | 4 | unstarted | |
+| 4.2 `merge` and `unmerge` | 4 | **landed** | Found the plan's `unmerge` passed raw ids where component roots are required — a four-deep chain left a stale pointer forever, breaking the ticket's central claim. |
+| 4.3 Slice 4 end to end | 4 | **landed** | 4 tests, 3 sabotages. Proves `modifications.part_id` is never rewritten — the promise that makes a wrong merge survivable. |
 
 ---
 
