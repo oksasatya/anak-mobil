@@ -772,7 +772,7 @@ mod tests {
         };
         assert!(missing_specs(PartCategory::Tyres, &specs).is_empty());
 
-        let mut short = specs.clone();
+        let mut short = specs;  // NOT .clone() — PartSpecs derives Copy, and clone_on_copy is denied under -D warnings
         short.tyre_aspect_ratio = None;
         assert_eq!(
             missing_specs(PartCategory::Tyres, &short),
@@ -1021,13 +1021,17 @@ pub fn is_complete(category: PartCategory, specs: &PartSpecs) -> bool {
 }
 ```
 
-- [ ] **Step 4: Export the module**
+- [x] **Step 4: Export the module — CORRECTED, this belongs BEFORE the red step**
 
 Append to `crates/domain/src/build/mod.rs`:
 
 ```rust
 pub mod policy;
 ```
+
+**Do this first, before writing the failing tests.** As originally ordered this was step 4, after the red run — and that ordering produces a **false red**. An undeclared module is not part of the crate at all, so `cargo test -p anakmobil-domain build::policy` matches zero tests and **passes silently** rather than failing for the intended reason.
+
+A red that passes is worse than no red, because it looks like the discipline ran. The implementer caught this unprompted and registered the module first; the real red was then 53 `E0433`/`E0425` errors naming every undeclared item, which is what a red is supposed to look like.
 
 - [ ] **Step 5: Run the tests to green, then the gate**
 
@@ -4691,10 +4695,10 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 
 | Task | Slice | Status | Notes |
 |---|---|---|---|
-| 1.1 Rename `service_category` to English | 1 | unstarted | |
-| 1.2 `parts` table, enums, range CHECKs | 1 | unstarted | |
-| 1.3 `missing_specs` domain policy | 1 | unstarted | |
-| 1.4 `part_repo` | 1 | unstarted | |
+| 1.1 Rename `service_category` to English | 1 | **landed** | Full gate re-run by the controller: fmt · clippy · be-boundary · sqlx --check · offline build · `cargo test --workspace` all EXIT=0, 11 suites. Live catalog confirmed English. Reversibility proven by apply → revert → apply. |
+| 1.2 `parts` table, enums, range CHECKs | 1 | **landed** | Migration applies, reverts with no orphan enum type, re-applies. 4 impossible values rejected by name, 9 real-world values accepted (ET −25, 5×114.3, 4×100, bore 54.1/56.1, 15" and 22", 225/40R18, 165/70R13). Table left empty. Full gate EXIT=0. |
+| 1.3 `missing_specs` domain policy | 1 | **landed** | TDD red confirmed (53 E0433/E0425), 22 domain tests green, boundary EXIT=0. Two sabotages each broke exactly one test. Plan step order corrected — see ledger. |
+| 1.4 `part_repo` | 1 | in flight | |
 | 1.5 Parts endpoints | 1 | unstarted | |
 | 1.6 Slice 1 end to end | 1 | unstarted | |
 | 2.1 `builds`, `modifications`, `cost_visibility` | 2 | unstarted | |
@@ -4711,6 +4715,19 @@ Slice boundaries are hard: each ships a pull request into `dev` with CI green be
 ---
 
 ## Review findings ledger
+
+| Task | Severity | Where | What breaks | Smallest fix | Status |
+|---|---|---|---|---|---|
+| 1.3 | `hygiene` | This plan, Task 1.3 steps 1–4 | The step order writes the failing test file first and appends `pub mod policy;` to `build/mod.rs` only at step 4. An undeclared module is not part of the crate, so the RED step matches **zero tests and passes silently** rather than failing for the intended reason — a false red, which is worse than no red because it looks like the discipline ran. | Register the module before the RED step. The implementer did this unprompted and reported it; corrected in the plan text below. | **fixed in plan** |
+| 1.1/1.2 | **`structural` — FIXED IMMEDIATELY** | `crates/domain/src/build/policy.rs` vs the `modification_category` enum | The plan wrote `'brake'` singular; the database landed `'brakes'` plural, matching `service_category` after Task 1.1. The domain variant was `Brake`. Task 1.4 writes the adapter enum and its `From` impls against both, and `rename_all = "snake_case"` would have derived `brake` from `Brake` — a label the database does not have. Left alone it becomes a `#[sqlx(rename)]` override papering over a naming split between two enums for the same concept. | Renamed the domain variant `Brake` → `Brakes` before dispatching 1.4. Three lines, one file, no dependents yet; after 1.4 it would have cost more. Plan text is stale where it says `'brake'`. | **closed — controller, inline** |
+| 1.1 | `test-integrity` | `tests/service_history_flow.rs:24-52` and its twin, plus every integration suite | **The whole harness, not this task.** The `app!` macro returns early when `DATABASE_URL`/`REDIS_URL` are absent and every test reports `ok`; `SKIPPED` never reaches cargo's output because cargo captures stderr for passing tests. Measured: 13 tests "pass" having executed nothing. So all 24 renamed literal sites were compiled but never run, and a green board proves compilation only. | Partly closed already: the `Makefile` now loads and exports `.env`, proven from a shell with both variables unset, and `apps/api/CLAUDE.md` no longer claims the tests "skip loudly". **Still open:** a bare `cargo test` is still silently green. Make the macro panic unless an explicit opt-out variable is set. | **partly closed; the loud-skip half is a fix-pass item** |
+| 1.1 | `test-integrity` | `adapter/http/services.rs:364-369` | The DB-free wire assertion moved from `KakiKaki → "kaki_kaki"` to `Suspension → "suspension"`. It can still fail, but a single-word label no longer distinguishes `snake_case` from `lowercase` or `kebab-case` — and the taxonomy just went from two multi-word labels to four. Change `rename_all` to `"lowercase"` and this test passes while clients start receiving `"airconditioning"`. | Assert `AirConditioning → "air_conditioning"`. One line, and stronger than what it replaces. | fix pass |
+| 1.1 | `hygiene` | The new rename migration | `apps/api/CLAUDE.md` says expand-and-contract, "never rename in place", because a deploy runs both versions at once — in an overlap window the old binary decodes `engine_oil` into an enum with no such label. Cost today is zero: nothing is deployed. The cost is precedent, a reviewed migration a future reader cites. | One sentence in the up migration saying expand-and-contract is deliberately skipped because nothing is deployed. Documentation only. | fix pass |
+| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — the `tyre_width_mm` and `tyre_rim_diameter_in` checks | **Proven by mutation, not argued:** deleting either check leaves all 8 tests passing. `a_tyre_needs_three_numbers_and_no_wheel_numbers` blanks only the aspect ratio, so the other two are never what makes an assertion true. If a later edit drops the width check, a tyre carrying only an aspect ratio reads as complete, the SQL mirror agrees, and the fitment engine compares a tyre with no width — exactly the "complete because nothing was required" line the spec draws. Wheels and Suspension are pinned against this; Tyres is not. | Add `a_bare_tyre_names_all_three`, the direct sibling of `a_bare_wheel_names_all_six`: assert `missing_specs(Tyres, &PartSpecs::default())` equals all three fields in order. Kills both mutants and pins field order too. | **fix pass — but before Task 1.4 writes the SQL mirror**, because that is when this definition becomes load-bearing in two places at once |
+| 1.3 | `test-integrity` | `crates/domain/src/build/policy.rs` — `SpecField::as_str()` | 9 of the 11 mappings are unfalsifiable; only `OffsetEtMm` and `CenterBoreMm` are asserted. Verified: typoing `"tyre_width_mm"` or `"suspension_kind"` passes all 8 tests. `as_str` is the column name *and* the wire name — the join between this policy, the client's label lookup, and any SQL keyed by column. A typo raises nothing anywhere; the client renders a key that maps to nothing. | Turn the two-line assert into a table over all eleven. ~13 lines, kills the whole class. | fix pass |
+| 1.3 | `hygiene` | This plan, Task 1.3 Step 1 | The plan's test body writes `let mut short = specs.clone();`. `PartSpecs` derives `Copy`, so that trips `clippy::clone_on_copy` under `-D warnings`. The writer fixed it forward, but a future reader copying the block reproduces a red gate. | Corrected in the plan text. | **fixed in plan** |
+| later | `test-integrity` | Whichever slice writes the SQL completeness predicate | Nothing binds the SQL predicate to `is_complete` except a prose sentence in the module doc. They can drift silently, which is precisely the anti-goal the spec names — and prose is not a mechanism. | One `#[sqlx::test]` inserting a part per category at each side of the completeness boundary, asserting the SQL predicate agrees with `is_complete`. It is the only thing that makes that anti-goal enforceable rather than aspirational. | **open — raise when the predicate is written** |
+| 1.1 | `hygiene` | The controller's brief for Task 1.1, not the plan | The brief said "do not touch `crates/domain/`" while the plan's own `Files:` list correctly names `crates/domain/src/garage/policy.rs` — the domain `ServiceCategory` lives there, and the rename cannot compile without it. The writer followed the plan over the prohibition, which was right. A more literal writer would have shipped a non-compiling half-rename. | Brief prohibitions are scoped to files the plan does not already assign to that task. Never write a blanket directory ban that contradicts the plan's `Files:` list. | **noted; applies to every later brief** |
 
 | Task | Severity | File and line | Failure scenario | Smallest fix | Closed by |
 |---|---|---|---|---|---|
