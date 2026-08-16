@@ -77,10 +77,20 @@ What stays pure is **policy** — no async, no I/O, just data in and a decision 
 
 ```rust
 // domain/src/garage/policy.rs
-pub fn derive_reminders(vehicle: &Vehicle, history: &[ServiceRecord], today: Date) -> Vec<Reminder>
+pub fn derive_reminders(history: &[LastService], odometer_km: Option<i32>, today: Date) -> Vec<Reminder>
 ```
 
-Tested by constructing values and asserting. No database, no mock, no async runtime.
+Tested by constructing values and asserting. No database, no mock, no
+async runtime. `today` is an argument rather than a call to the clock,
+which is what lets a test put a car two years past its oil change without
+waiting two years — and the same reason the rollup query takes its
+twelve-month cutoff as a parameter instead of writing `CURRENT_DATE`.
+
+`ServiceCategory` exists twice on purpose: once in `domain` and once in
+`adapter/postgres` carrying the sqlx and serde derives the domain crate
+has no dependencies for. The persistence model is not the domain model,
+and the two `From` impls are non-exhaustive matches the moment either
+side gains a variant — the compiler reports the drift.
 
 ## Repositories take a connection, never a pool
 
@@ -90,6 +100,29 @@ pub async fn insert_service(tx: &mut PgConnection, rec: &ServiceRecord) -> Resul
 ```
 
 This is what lets the **use case** own the transaction boundary — open, authorise, write, re-read under `SELECT … FOR UPDATE`, call policy, write the result, commit. A repository holding its own pool turns every call into a separate transaction, and two concurrent requests then interleave into stale derived state.
+
+## Rollups are one query for every car, not one per car
+
+A garage list that shows spend and overdue counts per row is the exact
+shape that becomes a query per car without anybody noticing, because the
+loop is over rendered rows rather than over `await`s. `summary_repo`
+therefore answers for **every one of the owner's cars at once**, even
+when the caller wants a single car: one aggregate scan for the totals,
+one `DISTINCT ON` for the latest service of each kind.
+
+The property is structural — `service_summary::for_list` makes exactly
+two repository calls, neither inside a loop — and it is **not pinned by a
+test**. Counting queries needs `pg_stat_statements`, which needs
+`shared_preload_libraries` and a server restart, which a GitHub Actions
+service container cannot set; such a test would pass locally and silently
+skip in CI. What *is* tested is the failure batching actually produces:
+`one_cars_totals_never_land_on_another_cars_row` catches totals grouped
+by the wrong key or result sets zipped out of order — plausible numbers
+on the wrong car. If you add a third rollup, keep it out of the loop and
+say so here.
+
+Summing money is left to the database. A rollup computed in Rust means
+loading every service record a car has ever had to produce one number.
 
 ## Repositories do not get traits
 
