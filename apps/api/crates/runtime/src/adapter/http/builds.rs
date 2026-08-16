@@ -316,6 +316,17 @@ pub async fn remove_modification(
 fn to_api_error(err: BuildError) -> ApiError {
     match err {
         BuildError::NotFound => ApiError::not_found(),
+        BuildError::TooManyParts => ApiError::too_many_requests(),
+        // A foreign key violation here means the caller named a `part_id` that
+        // does not exist — a well-formed but stale UUID, which is an ordinary
+        // thing for a client holding an old list. Postgres 23503 reaching the
+        // caller as a 500 is the same defect class this module guards every
+        // numeric field against, applied to the one foreign key.
+        BuildError::Database(sqlx::Error::Database(inner))
+            if inner.code().as_deref() == Some("23503") =>
+        {
+            ApiError::not_found()
+        }
         BuildError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),
     }
 }

@@ -10,6 +10,7 @@ use crate::adapter::postgres::build_repo::{
     self, Build, BuildInput, Modification, ModificationInput,
 };
 use crate::adapter::postgres::part_repo::{self, PartInput};
+use crate::usecase::parts;
 
 /// Why a build operation did not succeed.
 #[derive(Debug, thiserror::Error)]
@@ -20,6 +21,12 @@ pub enum BuildError {
     /// are real.
     #[error("no such build")]
     NotFound,
+    /// Today's allowance for new parts is spent.
+    ///
+    /// The same ceiling `POST /parts` enforces, on the other entrance to the
+    /// same queue.
+    #[error("today's parts allowance is spent")]
+    TooManyParts,
     #[error("the database could not be reached")]
     Database(#[from] sqlx::Error),
 }
@@ -89,6 +96,21 @@ async fn resolve_part(
     Ok(match part {
         PartChoice::Existing(id) => id,
         PartChoice::New(spec) => {
+            // The allowance is checked HERE and not only in `usecase::parts`,
+            // because the curation queue has two entrances and this is the
+            // other one. `POST /parts` stops at twenty a day; typing a part
+            // inline while recording a modification reaches the same insert,
+            // and did so with no ceiling at all — a review found it. The queue
+            // is read by a person, and flooding it is a denial of service
+            // against curation rather than against the server.
+            //
+            // Calling `usecase::parts::suggest` instead would be the obvious
+            // reuse and is wrong: it takes a pool and opens its own
+            // connection, which would put the part insert outside the
+            // transaction this modification depends on.
+            if parts::allowance_spent(tx, owner_id).await? {
+                return Err(BuildError::TooManyParts);
+            }
             part_repo::find_or_create_pending(tx, Uuid::now_v7(), owner_id, &spec).await?
         }
     })

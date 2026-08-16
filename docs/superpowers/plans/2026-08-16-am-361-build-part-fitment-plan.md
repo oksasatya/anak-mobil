@@ -3218,6 +3218,8 @@ not be told the thing does not exist."
 **Minimality check:**
 - **No new endpoint for `cost_visibility`.** It becomes a field on the existing `PUT /vehicles/{id}` request and the existing detail response. A `PATCH /vehicles/{id}/cost-visibility` would be a second write path to one column.
 - `add_modification` accepts **either** `part_id` **or** an inline `part` object, and the inline branch calls `part_repo::find_or_create_pending` — the same function `POST /parts` calls. Do not write a second insert.
+
+**And check the allowance before it.** Naming the repository function here is what produced a real hole: the daily ceiling lives in `usecase::parts`, so calling the repo directly reaches the insert without passing the guard, and the inline path had no limit at all while `POST /parts` stopped at twenty. Use `usecase::parts::allowance_spent(tx, owner_id)` — not `suggest`, which takes a pool and would put the insert outside this transaction.
 - No build-photo endpoints. The table exists; upload is out of scope and stubbing a route for it would be scaffolding.
 
 **Acceptance criteria:**
