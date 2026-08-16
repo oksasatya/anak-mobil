@@ -33,8 +33,8 @@ Redis is assumed to be running on your machine already, which is why it is not s
 
 ## What answers today
 
-Accounts, the caller's own cars, the catalog, and service history. Builds and
-everything AI are not built yet.
+Accounts, the caller's own cars, the catalog, service history, and the parts
+catalog. Builds and everything AI are not built yet.
 
 | Route | Answers | Checks |
 |---|---|---|
@@ -61,6 +61,9 @@ everything AI are not built yet.
 | `GET /catalog/models/{id}/generations` | `200` | — |
 | `GET /catalog/generations/{id}/variants` | `200` | — |
 | `POST /catalog/suggestions` | `201` | brand and model present, daily allowance |
+| `GET /parts` | `200` | category and text filter, limit capped |
+| `POST /parts` | `201` | specs inside their ranges, daily allowance |
+| `GET /parts/{id}` | `200` | — |
 
 ```bash
 curl -i localhost:8080/readyz

@@ -55,15 +55,15 @@
             "name": "service_category",
             "kind": {
               "Enum": [
-                "oli_mesin",
-                "oli_transmisi",
-                "rem",
-                "kaki_kaki",
+                "engine_oil",
+                "transmission_oil",
+                "brakes",
+                "suspension",
                 "tune_up",
-                "ac",
-                "kelistrikan",
-                "body",
-                "lainnya"
+                "air_conditioning",
+                "electrical",
+                "bodywork",
+                "other"
               ]
             }
           }

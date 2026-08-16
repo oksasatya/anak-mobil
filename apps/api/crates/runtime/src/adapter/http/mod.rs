@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod catalog;
+pub mod parts;
 pub mod probe;
 pub mod request_id;
 pub mod services;
@@ -46,6 +47,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/catalog/generations/{id}/variants", get(catalog::variants))
         .route("/catalog/suggestions", post(catalog::suggest))
+        .route("/parts", get(parts::search).post(parts::suggest))
+        .route("/parts/{id}", get(parts::detail))
         // `/vehicles/order` is declared before `/vehicles/{id}` so the literal
         // wins; otherwise "order" is parsed as a vehicle id and every reorder
         // is a 400.
