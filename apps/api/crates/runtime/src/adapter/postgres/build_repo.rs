@@ -427,7 +427,7 @@ pub struct EvidenceCount {
 /// not user-supplied — so there is no case where a row is inserted into the
 /// middle of the order, which is the failure the compound cursor exists for.
 ///
-/// Complexity: NOT `O(log n + limit)`. Measured at 50k builds, 98% private:
+/// Complexity: NOT `O(log n + limit)`. Measured at 50k builds, 98% private — order of magnitude, not a benchmark: an independent run on its own fixture got 1001 rows and 3024 buffers where this says 601 and 2419, and without the fixture recipe there is no way to say which is right. The SHAPE is what was verified and what matters:
 /// the planner declines `builds_visible_idx` for this predicate and walks
 /// `builds_pkey` backwards — 601 rows and 2419 buffers to return 21. Deep into
 /// a cursor with a viewer who owns nothing, it degrades to a `Seq Scan` over
@@ -473,6 +473,11 @@ pub async fn page_visible(
         "#,
         viewer_id,
         after,
+        // One row more than asked for. Its presence is how the caller learns
+        // another page exists without a second COUNT(*) — and it MUST be
+        // dropped before rendering. It is a real, visible build, so a handler
+        // that maps these rows straight into a response returns 21 items for a
+        // page of 20 and repeats its last build at the top of the next page.
         i64::from(limit) + 1,
     )
     .fetch_all(conn)
@@ -490,6 +495,17 @@ pub async fn page_visible(
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails.
+/// # The caller owns the authorisation check, exactly as `modifications_for` does
+///
+/// This takes whatever build ids it is given and never reaches
+/// `vehicles.owner_id`. Verified: passing a private build's id returns that
+/// build's `object_key`.
+///
+/// The neighbouring function carries this warning and this one did not, which
+/// is worse than neither having it — a caller who reads one and not the other
+/// will reasonably assume the difference means something.
+///
+/// Pass only ids the caller may see.
 pub async fn photos_for(
     conn: &mut PgConnection,
     build_ids: &[Uuid],
@@ -556,6 +572,16 @@ pub async fn photos_for(
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails.
+/// # Key the result by `part_id`; never zip it against the input by position
+///
+/// The result is not index-aligned with `part_ids`, in two ways. A part id
+/// that does not exist in `parts` returns **no row at all** — the inner join
+/// to `parts` drops it — so "a row of zeros rather than an absent row" holds
+/// only for parts that exist. And duplicates collapse: `[A, A, B]` returns two
+/// rows, not three.
+///
+/// A caller zipping by position therefore attaches the wrong count to the
+/// wrong part, silently and plausibly.
 pub async fn evidence_counts(
     conn: &mut PgConnection,
     part_ids: &[Uuid],
