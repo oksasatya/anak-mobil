@@ -224,7 +224,7 @@ Complexity is expressed in engineering-days for one experienced full-stack devel
 
 | # | Item | Detail | Size |
 |---|---|---|---|
-| E4-1 | Add service record | Date, mileage, category (taxonomy: oli mesin, oli transmisi, rem, kaki-kaki, tune-up, AC, kelistrikan, body, lainnya), parts replaced (multi), garage, cost, notes, invoice photo | M |
+| E4-1 | Add service record | Date, mileage, category (taxonomy: engine oil, transmission oil, brakes, suspension, tune-up, air conditioning, electrical, bodywork, other), parts replaced (multi), garage, cost, notes, invoice photo | M |
 | E4-2 | Service timeline | Grouped by year, mileage markers, cost column | M |
 | E4-3 | Service detail | Full record, invoice viewer, edit, delete | S |
 | E4-4 | Next-service rules | Per record: next date and/or next mileage. Derived "upcoming service" card on Home | M |
