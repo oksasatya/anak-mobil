@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT undone_by, undone_at FROM part_merges WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "undone_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "undone_by"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "undone_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "8ed67b1a4e5366792bb6360d33f944d542ea412af2d3fe220ff49c98559d07a3"
+}

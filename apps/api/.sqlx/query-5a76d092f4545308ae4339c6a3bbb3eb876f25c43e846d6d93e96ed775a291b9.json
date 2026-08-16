@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, canonical_part_id FROM parts WHERE id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "parts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "canonical_part_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "parts",
+            "name": "canonical_part_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "5a76d092f4545308ae4339c6a3bbb3eb876f25c43e846d6d93e96ed775a291b9"
+}

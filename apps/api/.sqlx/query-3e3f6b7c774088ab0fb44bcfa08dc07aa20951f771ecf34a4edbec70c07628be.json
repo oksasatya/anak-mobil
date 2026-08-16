@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT part_id FROM modifications WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "part_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "part_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3e3f6b7c774088ab0fb44bcfa08dc07aa20951f771ecf34a4edbec70c07628be"
+}
