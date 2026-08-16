@@ -170,7 +170,7 @@ async fn a_summary_adds_up_and_keeps_its_scale() {
         &app,
         &token,
         &car,
-        "oli_mesin",
+        "engine_oil",
         30,
         Some(140_000),
         Some("450000.50"),
@@ -180,7 +180,7 @@ async fn a_summary_adds_up_and_keeps_its_scale() {
         &app,
         &token,
         &car,
-        "rem",
+        "brakes",
         10,
         Some(141_000),
         Some("1200000"),
@@ -216,9 +216,18 @@ async fn spend_is_broken_down_by_kind_of_work() {
     let token = a_signed_in_person(&app).await;
     let car = a_car(&app, &token, "Honda Brio 2021").await;
 
-    a_service(&app, &token, &car, "oli_mesin", 200, None, Some("400000")).await;
-    a_service(&app, &token, &car, "oli_mesin", 20, None, Some("450000")).await;
-    a_service(&app, &token, &car, "ac", 15, None, Some("300000")).await;
+    a_service(&app, &token, &car, "engine_oil", 200, None, Some("400000")).await;
+    a_service(&app, &token, &car, "engine_oil", 20, None, Some("450000")).await;
+    a_service(
+        &app,
+        &token,
+        &car,
+        "air_conditioning",
+        15,
+        None,
+        Some("300000"),
+    )
+    .await;
 
     let body = json(
         send(
@@ -235,12 +244,12 @@ async fn spend_is_broken_down_by_kind_of_work() {
 
     assert_eq!(by_category.len(), 2, "two kinds of work, not three records");
     assert_eq!(
-        by_category[0]["category"], "oli_mesin",
+        by_category[0]["category"], "engine_oil",
         "the biggest spend first"
     );
     assert_eq!(by_category[0]["service_count"], 2);
     assert_eq!(by_category[0]["total_cost"], "850000.00");
-    assert_eq!(by_category[1]["category"], "ac");
+    assert_eq!(by_category[1]["category"], "air_conditioning");
 }
 
 #[tokio::test]
@@ -254,7 +263,7 @@ async fn a_service_older_than_its_interval_is_overdue() {
         &app,
         &token,
         &car,
-        "oli_mesin",
+        "engine_oil",
         730,
         Some(100_000),
         Some("400000"),
@@ -275,7 +284,7 @@ async fn a_service_older_than_its_interval_is_overdue() {
     let reminders = body["data"]["reminders"].as_array().expect("reminders");
 
     assert_eq!(reminders.len(), 1);
-    assert_eq!(reminders[0]["category"], "oli_mesin");
+    assert_eq!(reminders[0]["category"], "engine_oil");
     assert_eq!(reminders[0]["urgency"], "overdue");
     assert!(
         reminders[0]["days_remaining"].as_i64().expect("a number") < 0,
@@ -296,7 +305,7 @@ async fn only_the_latest_service_of_a_kind_drives_its_reminder() {
         &app,
         &token,
         &car,
-        "oli_mesin",
+        "engine_oil",
         900,
         Some(100_000),
         Some("400000"),
@@ -306,7 +315,7 @@ async fn only_the_latest_service_of_a_kind_drives_its_reminder() {
         &app,
         &token,
         &car,
-        "oli_mesin",
+        "engine_oil",
         5,
         Some(120_000),
         Some("450000"),
@@ -350,8 +359,8 @@ async fn reactive_work_never_becomes_a_reminder() {
     let token = a_signed_in_person(&app).await;
     let car = a_car(&app, &token, "Mitsubishi Xpander 2022").await;
 
-    a_service(&app, &token, &car, "body", 700, None, Some("2500000")).await;
-    a_service(&app, &token, &car, "kelistrikan", 700, None, Some("800000")).await;
+    a_service(&app, &token, &car, "bodywork", 700, None, Some("2500000")).await;
+    a_service(&app, &token, &car, "electrical", 700, None, Some("800000")).await;
 
     let body = json(
         send(
@@ -395,7 +404,7 @@ async fn one_cars_totals_never_land_on_another_cars_row() {
         &app,
         &token,
         &avanza,
-        "oli_mesin",
+        "engine_oil",
         20,
         Some(140_000),
         Some("450000"),
@@ -405,13 +414,22 @@ async fn one_cars_totals_never_land_on_another_cars_row() {
         &app,
         &token,
         &brio,
-        "rem",
+        "brakes",
         900,
         Some(80_000),
         Some("1200000"),
     )
     .await;
-    a_service(&app, &token, &brio, "ac", 10, None, Some("300000")).await;
+    a_service(
+        &app,
+        &token,
+        &brio,
+        "air_conditioning",
+        10,
+        None,
+        Some("300000"),
+    )
+    .await;
 
     let body = json(send(&app, "GET", "/vehicles", None, Some(&token)).await).await;
     let rows = body["data"].as_array().expect("a list");
@@ -453,7 +471,7 @@ async fn a_stranger_sees_nothing_of_your_spending() {
         &app,
         &owner,
         &car,
-        "oli_mesin",
+        "engine_oil",
         20,
         Some(50_000),
         Some("900000"),
@@ -508,7 +526,7 @@ async fn spend_outside_the_last_year_counts_in_the_lifetime_total_only() {
     let car = a_car(&app, &token, "Nissan Livina 2020").await;
 
     a_service(&app, &token, &car, "tune_up", 400, None, Some("2000000")).await;
-    a_service(&app, &token, &car, "oli_mesin", 30, None, Some("450000")).await;
+    a_service(&app, &token, &car, "engine_oil", 30, None, Some("450000")).await;
 
     let body = json(
         send(
