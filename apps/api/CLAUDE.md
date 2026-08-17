@@ -162,7 +162,14 @@ The integration tests need a real Postgres and a real Redis.
 
 **They do NOT skip loudly, and this sentence used to claim they did.** Without `DATABASE_URL` and `REDIS_URL` the `app!` macro returns early and every test reports `ok` — and the word `SKIPPED` never reaches cargo's output, because cargo captures stderr for passing tests. Measured: 13 tests "pass" having executed nothing.
 
-Two things stand between that and a false green. `make be-test` loads `.env` from the repository root and exports it, so the normal path always has both URLs; and CI supplies them directly. Neither helps somebody running a bare `cargo test`, which is why making the skip fail loudly is an open finding rather than a solved problem.
+**Every one of those guards now fails loudly rather than skipping** — missing URLs, an unusable `DATABASE_URL`, a database that will not migrate, an unreachable Redis. Deliberately skipping is still possible and now has to be said out loud:
+
+```bash
+AM_SKIP_INTEGRATION=1 cargo test    # unit tests only, on purpose
+make be-test                         # the normal path; loads .env
+```
+
+**The first fix for this was incomplete, and the incompleteness is the lesson.** Only the missing-URL guard was made loud; the three below it still returned. So when the Docker daemon died, the whole suite reported fifteen green boards with no database at all — the same false green, one guard over, and reported as closed. A partial fix to a silent-failure bug is worse than none, because it buys confidence the code has not earned.
 
 ## Migrations
 
