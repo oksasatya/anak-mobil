@@ -231,6 +231,15 @@ Written here rather than in the migration because the migration is merged and
 its checksum is frozen — and because a comment claiming a guarantee the schema
 does not provide is the defect this ticket already burned a finding on.
 
+`role_changes` is the version that does. Its migration ships a
+`BEFORE UPDATE OR DELETE` trigger that raises, so the guarantee is in the
+schema rather than in a comment, and both foreign keys are `ON DELETE
+RESTRICT` rather than `SET NULL` — a referential action is an ordinary write
+to the child row, and the trigger would reject it, taking the whole parent
+`DELETE` down with it. `part_merges` predates that reasoning and its migration
+is merged, so its checksum is frozen; the same trigger would fit it whenever a
+new migration is worth writing.
+
 ## Async
 
 Never block the runtime: no `std::thread::sleep`, no synchronous driver, no `reqwest::blocking`, no heavy CPU inside an `async fn`. CPU work goes to `spawn_blocking`, or to the worker role.
