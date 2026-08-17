@@ -74,7 +74,7 @@ pub async fn for_vehicle(
     let build = build_repo::find_build_for_vehicle(&mut conn, owner_id, vehicle_id)
         .await?
         .ok_or(BuildError::NotFound)?;
-    let modifications = build_repo::modifications_for(&mut conn, &[build.id]).await?;
+    let modifications = build_repo::modifications_for(&mut conn, &[build.id], owner_id).await?;
 
     Ok((build, modifications))
 }
@@ -113,7 +113,7 @@ pub async fn page(
     rows.truncate(usize::from(limit));
 
     let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
-    let modifications = build_repo::modifications_for(&mut conn, &ids).await?;
+    let modifications = build_repo::modifications_for(&mut conn, &ids, viewer_id).await?;
     let photos = build_repo::photos_for(&mut conn, &ids).await?;
 
     let mut by_build: HashMap<Uuid, Vec<Modification>> = HashMap::new();
