@@ -95,6 +95,8 @@ One transaction, in this order:
 
 **The reason is read from stdin, not from `argv`.** An operational reason is not a secret, but `--reason "granting Budi admin for catalog curation"` lands in shell history and in every `ps` listing on the box. Reading it from the terminal costs nothing and leaks nothing.
 
+**Its length and blankness are checked inside `set_role`, not at the HTTP boundary — and an earlier draft of this spec was wrong about where.** That draft said to reuse `shared/validation.rs`; that module holds `DecimalSpec` and `decimal()` and nothing else, and the text-length pattern lives privately inside `http/parts.rs`. Validating at the HTTP boundary would also leave the CLI entrance unguarded, which is precisely the two-entrances defect AM-361 shipped when a daily allowance was enforced on one of three paths. The use case is the only point both entrances pass through, so the guard goes there.
+
 ### Zero admins is a legitimate state
 
 There is no rule preventing the last admin from being demoted, and none preventing an admin from demoting themselves.
@@ -149,7 +151,9 @@ Still one query for any number of builds, still no N+1 — `builds.vehicle_id` i
 
 ### AC4 — an admin read endpoint, pulled in deliberately
 
-`GET /admin/users/{id}/vehicles` — admin-only, listing a person's vehicles with no `plate`, no `vin`, no `purchase_price`.
+`GET /admin/users/{id}/vehicles` — admin-only, listing a person's vehicles with no `plate`, no `vin`, no `purchase_price`, **and no service spend**.
+
+**That last one is a correction to this spec, found by reading the code rather than the ticket.** AC4 names plate, VIN, and purchase price, and an earlier draft of this section copied that list. But `CONTEXT.md` defines private vehicle data as *"number plate, VIN, purchase price, and service costs"*, and `ListSummaryResponse` carries `total_cost` — a rollup of exactly those service costs. Reusing the existing list projection would have handed an admin a person's total spend while satisfying the ticket's literal wording. The admin response therefore carries no summary at all; it is a different projection, not the owner's one with three fields removed.
 
 **This is scope the owner added with the trade-off stated.** The endpoint belongs to AM-366 (backoffice API) serving AM-89 (user management, E13-6). Without it, AC4 has nothing to prove: no admin path reads a vehicle today, so a test asserting "the admin response contains no plate" would pass by receiving a 404 — an assertion that cannot fail, which is the defect class this project's reviewers have caught nine times in one ticket.
 
