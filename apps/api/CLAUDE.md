@@ -207,6 +207,23 @@ A deploy has both versions running at once, so a schema change must be readable 
 - **Closed sets are native enums.** `ALTER TYPE … ADD VALUE` does not break a running older version. Removing a value is genuinely hard, which is the honest cost of declaring the set closed.
 - **Content tables carry a status the indexer can see.** Reported, hidden, and deleted content is never cited as evidence, and that requires a path that pulls it back out of the index.
 
+## `part_merges` is append-only by discipline, not by constraint
+
+The table's own comment says a merge is never deleted, because undo reads it
+to know what the previous state was. The database does not enforce that:
+verified, an `UPDATE` can rewrite `source_part_id` on a landed merge and a
+`DELETE` can remove history outright.
+
+Acceptable today — no admin surface, one application role, and no statement
+anywhere that deletes from it. What would enforce it when there is one: a
+`BEFORE UPDATE` trigger permitting only the `undone_at NULL → non-NULL`
+transition, or `REVOKE DELETE` from the application role. The same trigger
+would also force an undo to name its actor, which the one-way CHECK cannot.
+
+Written here rather than in the migration because the migration is merged and
+its checksum is frozen — and because a comment claiming a guarantee the schema
+does not provide is the defect this ticket already burned a finding on.
+
 ## Async
 
 Never block the runtime: no `std::thread::sleep`, no synchronous driver, no `reqwest::blocking`, no heavy CPU inside an `async fn`. CPU work goes to `spawn_blocking`, or to the worker role.

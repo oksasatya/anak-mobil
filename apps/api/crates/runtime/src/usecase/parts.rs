@@ -145,6 +145,25 @@ pub(crate) async fn allowance_spent(
     conn: &mut sqlx::PgConnection,
     suggested_by: Uuid,
 ) -> Result<bool, sqlx::Error> {
+    // Serialised per person before the count is read, because counting and
+    // then inserting is check-then-act: N concurrent requests all read the
+    // same nineteen and all pass, and the real ceiling becomes the connection
+    // pool rather than the number written here.
+    //
+    // The lock is keyed on the person, not the table, so two curators never
+    // wait on each other. It is transaction-scoped, so it releases on commit
+    // or rollback with nothing to remember to unlock.
+    //
+    // Worth being clear about the stakes: this guards a queue a human reads,
+    // not money. Twenty-one parts instead of twenty is not the failure — an
+    // unbounded flood is, and that is what the serialisation removes.
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtext('parts_allowance'), hashtext($1::text))",
+        suggested_by.to_string()
+    )
+    .execute(&mut *conn)
+    .await?;
+
     let since = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     Ok(part_repo::suggested_since(conn, suggested_by, since).await? >= PARTS_PER_DAY)
 }
@@ -154,20 +173,27 @@ pub async fn suggest(
     suggested_by: Uuid,
     input: &PartInput,
 ) -> Result<Uuid, PartError> {
-    let mut conn = pool.acquire().await?;
+    // A transaction, not a bare connection, and the reason is easy to get
+    // wrong: `pg_advisory_xact_lock` is released at the end of its
+    // transaction, and on an autocommit connection every statement IS its own
+    // transaction — so the lock would be taken and dropped before the count
+    // was read, doing nothing at all while looking like a guard.
+    let mut tx = pool.begin().await?;
 
-    if allowance_spent(&mut conn, suggested_by).await? {
+    if allowance_spent(&mut tx, suggested_by).await? {
         return Err(PartError::TooManyParts);
     }
 
     let id =
-        part_repo::find_or_create_pending(&mut conn, Uuid::now_v7(), suggested_by, input).await?;
+        part_repo::find_or_create_pending(&mut tx, Uuid::now_v7(), suggested_by, input).await?;
 
-    tracing::info!(
-        category = ?input.category,
-        brand = %input.brand,
-        "part added to the curation queue"
-    );
+    tx.commit().await?;
+
+    // The part id and the person, not the text they typed. `brand` is
+    // caller-controlled free text, and the repository rule is that a log line
+    // carries method, route, status, latency, and request id — nothing else.
+    // A user id is not a credential and is enough to investigate.
+    tracing::info!(%id, user_id = %suggested_by, "part added to the curation queue");
 
     Ok(id)
 }

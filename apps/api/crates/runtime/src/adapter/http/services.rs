@@ -395,5 +395,13 @@ mod tests {
         // The wire form is the contract a client switches on.
         let json = serde_json::to_string(&ServiceCategory::Suspension).expect("serialising");
         assert_eq!(json, "\"suspension\"");
+
+        // A multi-word label too, and that is the point. The assertion this
+        // replaced read `KakiKaki → "kaki_kaki"`; after the rename a
+        // single-word label no longer distinguishes snake_case from lowercase
+        // or kebab-case, so changing `rename_all` to "lowercase" would pass
+        // here while clients started receiving "airconditioning".
+        let json = serde_json::to_string(&ServiceCategory::AirConditioning).expect("serialising");
+        assert_eq!(json, "\"air_conditioning\"");
     }
 }
