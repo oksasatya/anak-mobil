@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT actor_id,\n               from_role AS \"from_role: PlatformRole\",\n               to_role   AS \"to_role: PlatformRole\",\n               reason\n        FROM role_changes WHERE target_user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "actor_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "role_changes",
+            "name": "actor_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "from_role: PlatformRole",
+        "type_info": {
+          "Custom": {
+            "name": "platform_role",
+            "kind": {
+              "Enum": [
+                "user",
+                "admin"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "role_changes",
+            "name": "from_role"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "to_role: PlatformRole",
+        "type_info": {
+          "Custom": {
+            "name": "platform_role",
+            "kind": {
+              "Enum": [
+                "user",
+                "admin"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "role_changes",
+            "name": "to_role"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "role_changes",
+            "name": "reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1f36205ad4f2176526097faf4c94a3a472d99b5ba0ad2887ef918e359e9f56e1"
+}

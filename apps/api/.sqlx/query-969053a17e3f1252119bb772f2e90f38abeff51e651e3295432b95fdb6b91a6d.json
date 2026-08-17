@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, build_id, part_id, install_date, mileage_km,\n               cost, garage_name, notes, removed_at\n        FROM modifications\n        WHERE build_id = ANY($1)\n        ORDER BY build_id, install_date DESC NULLS LAST, id\n        ",
+  "query": "\n        SELECT m.id, m.build_id, m.part_id, m.install_date, m.mileage_km,\n               CASE WHEN v.owner_id = $2\n                      OR v.cost_visibility IN ('community', 'public')\n                    THEN m.cost\n               END AS \"cost?: BigDecimal\",\n               m.garage_name, m.notes, m.removed_at\n        FROM modifications m\n        JOIN builds b   ON b.id = m.build_id\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE m.build_id = ANY($1)\n        ORDER BY m.build_id, m.install_date DESC NULLS LAST, m.id\n        ",
   "describe": {
     "columns": [
       {
@@ -60,14 +60,9 @@
       },
       {
         "ordinal": 5,
-        "name": "cost",
+        "name": "cost?: BigDecimal",
         "type_info": "Numeric",
-        "origin": {
-          "Table": {
-            "table": "modifications",
-            "name": "cost"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 6,
@@ -105,7 +100,8 @@
     ],
     "parameters": {
       "Left": [
-        "UuidArray"
+        "UuidArray",
+        "Uuid"
       ]
     },
     "nullable": [
@@ -114,11 +110,11 @@
       false,
       true,
       true,
-      true,
+      null,
       true,
       true,
       true
     ]
   },
-  "hash": "68c593fa07f84c708c0b3afcec80b230fc219be043f8ef2450c40e9e20bce924"
+  "hash": "969053a17e3f1252119bb772f2e90f38abeff51e651e3295432b95fdb6b91a6d"
 }

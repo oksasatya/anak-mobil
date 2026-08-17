@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            b.id,\n            b.vehicle_id,\n            b.notes,\n            b.visibility AS \"visibility: Visibility\",\n            v.owner_id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.cost_visibility AS \"cost_visibility: Visibility\"\n        FROM builds b\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE (b.visibility <> 'private' OR v.owner_id = $1)\n          AND ($2::uuid IS NULL OR b.id < $2)\n        ORDER BY b.id DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT\n            b.id,\n            b.vehicle_id,\n            b.notes,\n            b.visibility AS \"visibility: Visibility\",\n            v.variant_id,\n            v.nickname,\n            v.described_as\n        FROM builds b\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE (b.visibility <> 'private' OR v.owner_id = $1)\n          AND ($2::uuid IS NULL OR b.id < $2)\n        ORDER BY b.id DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -60,17 +60,6 @@
       },
       {
         "ordinal": 4,
-        "name": "owner_id",
-        "type_info": "Uuid",
-        "origin": {
-          "Table": {
-            "table": "vehicles",
-            "name": "owner_id"
-          }
-        }
-      },
-      {
-        "ordinal": 5,
         "name": "variant_id",
         "type_info": "Uuid",
         "origin": {
@@ -81,7 +70,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 5,
         "name": "nickname",
         "type_info": "Text",
         "origin": {
@@ -92,35 +81,13 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "described_as",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "vehicles",
             "name": "described_as"
-          }
-        }
-      },
-      {
-        "ordinal": 8,
-        "name": "cost_visibility: Visibility",
-        "type_info": {
-          "Custom": {
-            "name": "visibility",
-            "kind": {
-              "Enum": [
-                "private",
-                "community",
-                "public"
-              ]
-            }
-          }
-        },
-        "origin": {
-          "Table": {
-            "table": "vehicles",
-            "name": "cost_visibility"
           }
         }
       }
@@ -137,12 +104,10 @@
       false,
       true,
       false,
-      false,
       true,
       true,
-      true,
-      false
+      true
     ]
   },
-  "hash": "00adea6eb5e5594b8748ebfd049a0a1367a1aea78c0717469335437850570258"
+  "hash": "ec0abea2d4e66254eb8afaee3a9797c6c337e7e6d4b669208cbaee7f35385117"
 }
