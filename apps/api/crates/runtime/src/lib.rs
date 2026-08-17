@@ -51,8 +51,18 @@ pub enum Role {
     Migrate,
 }
 
+/// The one command that is not a process role.
+///
+/// `grant-admin` takes an email and its reason comes from stdin, neither of
+/// which `Role::parse`'s single argument has room for — see
+/// [`run_grant_admin`]. Matched by hand in [`run`], before `Role::parse`,
+/// the same way `Role::parse` itself hand-matches one argument rather than
+/// reaching for an argument parser.
+const GRANT_ADMIN: &str = "grant-admin";
+
 impl Role {
-    const USAGE: &'static str = "usage: anakmobil <web|worker|migrate>";
+    const USAGE: &'static str =
+        "usage: anakmobil <web|worker|migrate>\n       anakmobil grant-admin <email>";
 
     /// Read the role from the first command-line argument.
     ///
@@ -96,7 +106,20 @@ pub async fn run() -> anyhow::Result<()> {
     // variables and has no file to load.
     let _ = dotenvy::dotenv();
 
-    let role = Role::parse(std::env::args().nth(1).as_deref()).map_err(anyhow::Error::msg)?;
+    let mut args = std::env::args().skip(1);
+    let command = args.next();
+
+    // Matched before `Role::parse`, because this is not a process role. It
+    // takes an email, which a role does not, and the reason it needs comes
+    // from stdin rather than from another argument — see `run_grant_admin`.
+    if command.as_deref() == Some(GRANT_ADMIN) {
+        let email = args.next().ok_or_else(|| anyhow::Error::msg(Role::USAGE))?;
+        let config = Config::from_env()?;
+        logging::init(config.app_env, &config.log_level)?;
+        return run_grant_admin(&config, &email).await;
+    }
+
+    let role = Role::parse(command.as_deref()).map_err(anyhow::Error::msg)?;
 
     // Configuration is read before logging is installed, so its failures are
     // the one thing that cannot be logged. They surface through the error
@@ -198,6 +221,66 @@ async fn run_worker() {
     tracing::info!("shutdown signal received, finishing in-flight jobs");
 }
 
+/// Grant the first platform admin, when the platform has none.
+///
+/// The way back in when there are zero admins — which is a legitimate state,
+/// because there is no last-admin guard. Requiring shell access to the server
+/// is a higher authority than any admin session, which is what makes it a
+/// recovery path rather than a back door.
+///
+/// The reason is read from **stdin**, never from `argv`. An operational
+/// reason is not a secret, but `--reason "granting Budi admin for catalog
+/// curation"` lands in shell history and in every `ps` listing on the box.
+/// Reading it from the terminal costs nothing and leaks nothing.
+///
+/// The zero-admin precondition is checked inside `set_role`'s transaction and
+/// its lock, not here. Checking it here and then calling would be
+/// check-then-act: two operators running this at once would both see zero.
+async fn run_grant_admin(config: &Config, email: &str) -> anyhow::Result<()> {
+    let pool = adapter::postgres::connect(config.database_url.expose())?;
+
+    let reason = read_reason().await?;
+
+    let mut conn = pool.acquire().await?;
+    let target = adapter::postgres::user_repo::find_id_by_email(&mut conn, email)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no account is registered with that address"))?;
+    drop(conn);
+
+    let change = usecase::roles::set_role(
+        &pool,
+        usecase::roles::Actor::Bootstrap,
+        target,
+        adapter::postgres::user_repo::PlatformRole::Admin,
+        &reason,
+    )
+    .await?;
+
+    match change {
+        Some(_) => println!("granted: {target} is now a platform admin"),
+        None => println!("no change: {target} is already a platform admin"),
+    }
+
+    pool.close().await;
+    Ok(())
+}
+
+/// Read one line of reason from the terminal.
+///
+/// `spawn_blocking` rather than a direct read: this crate builds tokio
+/// without the `io-std` feature, so there is no async stdin to reach for.
+/// One line, and the feature stays out of the dependency list.
+async fn read_reason() -> anyhow::Result<String> {
+    eprint!("reason: ");
+    let line = tokio::task::spawn_blocking(|| {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        Ok::<_, std::io::Error>(line)
+    })
+    .await??;
+    Ok(line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +311,24 @@ mod tests {
         assert_eq!(Role::Web.to_string(), "web");
         assert_eq!(Role::Worker.to_string(), "worker");
         assert_eq!(Role::Migrate.to_string(), "migrate");
+    }
+
+    #[test]
+    fn grant_admin_is_not_a_process_role() {
+        // The prohibition, pinned. `Role` models the process a binary IS —
+        // web, worker, migrate — and `CONTEXT.md` calls that a property of the
+        // deployment rather than of any person. A fourth arm here would have
+        // nowhere to put an email or a reason.
+        let err = Role::parse(Some(GRANT_ADMIN)).unwrap_err();
+        assert!(err.contains("unknown role"));
+    }
+
+    #[test]
+    fn the_usage_line_names_every_way_to_start_this_binary() {
+        // A recovery path nobody can discover is a recovery path that does not
+        // exist.
+        let err = Role::parse(Some("webb")).unwrap_err();
+        assert!(err.contains("web|worker|migrate"));
+        assert!(err.contains(GRANT_ADMIN));
     }
 }

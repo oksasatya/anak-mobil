@@ -41,5 +41,6 @@ pub mod catalog;
 pub mod garage;
 pub mod part_merge;
 pub mod parts;
+pub mod roles;
 pub mod service_history;
 pub mod service_summary;

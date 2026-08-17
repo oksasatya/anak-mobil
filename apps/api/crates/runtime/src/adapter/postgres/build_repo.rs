@@ -331,7 +331,26 @@ pub async fn mark_modification_removed(
 // instead of two. It reads like dead code to anyone who does not know that
 // rule, hence this note.
 
-/// Every modification on these builds, in one query.
+/// Every modification on these builds, with `cost` already filtered for this
+/// viewer.
+///
+/// The filter is in the query, not in the caller. It used to be a Rust
+/// function at the boundary — `visible_cost` in `adapter/http/builds.rs` —
+/// which meant the number was read out of the database and into the process
+/// before anybody decided whether the caller was allowed to see it. A cost
+/// that reaches the wire cannot be recalled, and the shortest path to never
+/// sending one is never selecting it.
+///
+/// The permitted values are listed rather than written `<> 'private'`, and
+/// the difference is what happens when the enum grows: this repository
+/// extends closed sets with `ALTER TYPE … ADD VALUE`, so `<>` would make
+/// every cost on the platform visible under a new variant. Naming them fails
+/// CLOSED. Note the cost of moving this into SQL: the Rust `match` this
+/// replaces made the compiler report the drift, and no compiler will report
+/// it here. Whoever adds a variant to `visibility` must come and read this.
+///
+/// The owner's own view is unconditional — a `private` setting never hides a
+/// person's own numbers from the person who paid them.
 ///
 /// `= ANY($1)` rather than a query per build. This is the function AC5 turns
 /// on: a loop of `await`s here is the N+1 the acceptance criterion forbids, and
@@ -343,64 +362,60 @@ pub async fn mark_modification_removed(
 /// "fitted and taken off", which is exactly the distinction the two evidence
 /// counts are built on.
 ///
-/// Complexity: `O(log n + m)` for `m` matching rows via
-/// `modifications_build_idx`; `O(m)` memory. One round trip regardless of how
-/// many builds are asked for.
+/// # The caller still owns the build-level authorisation check
+///
+/// This takes whatever build ids it is given and its `WHERE` clause does not
+/// reach `vehicles.owner_id`. What the viewer changes is the `cost` column,
+/// not which rows come back. Pass only ids the caller may see.
+///
+/// Complexity: `O(M log B)` for `M` modifications — both joins are to at most
+/// one row (`builds.id` is a primary key and `builds.vehicle_id` is UNIQUE),
+/// so the join multiplies nothing. One query for any number of builds.
 ///
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails.
-/// # The caller owns two checks this function does not make
-///
-/// This is the only function here that never reaches `vehicles.owner_id`: it
-/// takes whatever build ids it is given. That is deliberate — the caller has
-/// already resolved and authorised them — but it means two obligations live
-/// outside this file and are easy to forget at the call site.
-///
-/// **Authorisation.** Pass only build ids the caller may see.
-///
-/// **Cost.** Every row carries `cost`, unfiltered. `vehicles.cost_visibility`
-/// exists precisely to gate that, and filtering it server-side is one of the
-/// platform's non-negotiables. A community list that maps these rows straight
-/// into a response leaks every owner's spend — and the row shape carries
-/// `cost_visibility` alongside, so the data to decide with is already there.
 pub async fn modifications_for(
     conn: &mut PgConnection,
     build_ids: &[Uuid],
+    viewer_id: Uuid,
 ) -> Result<Vec<Modification>, sqlx::Error> {
     sqlx::query_as!(
         Modification,
         r#"
-        SELECT id, build_id, part_id, install_date, mileage_km,
-               cost, garage_name, notes, removed_at
-        FROM modifications
-        WHERE build_id = ANY($1)
-        ORDER BY build_id, install_date DESC NULLS LAST, id
+        SELECT m.id, m.build_id, m.part_id, m.install_date, m.mileage_km,
+               CASE WHEN v.owner_id = $2
+                      OR v.cost_visibility IN ('community', 'public')
+                    THEN m.cost
+               END AS "cost?: BigDecimal",
+               m.garage_name, m.notes, m.removed_at
+        FROM modifications m
+        JOIN builds b   ON b.id = m.build_id
+        JOIN vehicles v ON v.id = b.vehicle_id
+        WHERE m.build_id = ANY($1)
+        ORDER BY m.build_id, m.install_date DESC NULLS LAST, m.id
         "#,
         build_ids,
+        viewer_id,
     )
     .fetch_all(conn)
     .await
 }
 
 /// One row of [`page_visible`] — a build plus the vehicle fields its caller
-/// needs without a second round trip: who owns it, what variant it is (for
-/// the evidence-count filter), and both visibility settings.
+/// needs without a second round trip: what variant it is (for the
+/// evidence-count filter) and how the car is named. Ownership and cost
+/// visibility used to live here too; the cost filter now runs in the query
+/// that reads the modifications, so this row no longer carries them.
 #[derive(Debug, Clone)]
 pub struct BuildRow {
     pub id: Uuid,
     pub vehicle_id: Uuid,
     pub notes: Option<String>,
     pub visibility: Visibility,
-    pub owner_id: Uuid,
     pub variant_id: Option<Uuid>,
     pub nickname: Option<String>,
     pub described_as: Option<String>,
-    /// Who may see this car's cost. Carried here so the response mapping can
-    /// null out a modification's `cost` without a second query — the filter
-    /// itself lives at the boundary that renders `Modification` into a
-    /// response, not here.
-    pub cost_visibility: Visibility,
 }
 
 /// One row of [`photos_for`].
@@ -459,11 +474,9 @@ pub async fn page_visible(
             b.vehicle_id,
             b.notes,
             b.visibility AS "visibility: Visibility",
-            v.owner_id,
             v.variant_id,
             v.nickname,
-            v.described_as,
-            v.cost_visibility AS "cost_visibility: Visibility"
+            v.described_as
         FROM builds b
         JOIN vehicles v ON v.id = b.vehicle_id
         WHERE (b.visibility <> 'private' OR v.owner_id = $1)

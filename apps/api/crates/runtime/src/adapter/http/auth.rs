@@ -1,13 +1,14 @@
 //! Authentication endpoints and the extractor that guards everything else.
 
 use axum::Json;
-use axum::extract::{ConnectInfo, FromRequestParts, State};
+use axum::extract::{ConnectInfo, FromRequestParts, MatchedPath, State};
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
+use crate::adapter::postgres::user_repo::{self, PlatformRole};
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::response::ApiResponse;
@@ -43,6 +44,73 @@ impl FromRequestParts<AppState> for Authenticated {
             .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?
             .map(|user_id| Self { user_id })
             .ok_or_else(ApiError::unauthorized)
+    }
+}
+
+/// A caller proven to be a platform admin.
+///
+/// The same claim [`Authenticated`] makes, one level up: a handler that takes
+/// this parameter cannot be routed without an admin behind it, so the check is
+/// in the type rather than in a line of code somebody has to remember to write
+/// first. With one admin endpoint today that looks like ceremony; with AM-366's
+/// curation queues it is the only thing that scales, and adding it later means
+/// auditing every route written in between.
+///
+/// The role is read from Postgres on **every** admin request. Nothing caches
+/// it, so a demoted admin's next admin request is refused without waiting for
+/// a new token — while their ordinary requests are unaffected, because a
+/// demoted admin is still a user and their garage still belongs to them.
+///
+/// **Failure is closed.** A database error is a 500; it is never "assume
+/// `user`" and never "assume `admin`". A missing account — a session that
+/// outlived its row — is a refusal, not an assumption.
+///
+/// **403, not 404.** AM-84's AC2 asks for a rejection the person can
+/// understand, and hiding an endpoint's existence from an already
+/// authenticated account buys nothing.
+#[derive(Debug, Clone, Copy)]
+pub struct Admin {
+    pub user_id: Uuid,
+}
+
+impl FromRequestParts<AppState> for Admin {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        let Authenticated { user_id } = Authenticated::from_request_parts(parts, state).await?;
+
+        let mut conn = state
+            .pool
+            .acquire()
+            .await
+            .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?;
+
+        let role = user_repo::platform_role_of(&mut conn, user_id)
+            .await
+            .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?;
+
+        match role {
+            Some(PlatformRole::Admin) => Ok(Self { user_id }),
+            // Enumerated rather than `_`, so a third variant is a compile
+            // error somebody has to decide about. It would fail closed either
+            // way; what the enumeration buys is that the decision is visible.
+            Some(PlatformRole::User) | None => {
+                // Without this line, probing for admin endpoints is
+                // indistinguishable from silence on precisely the routes an
+                // attacker would probe. The user id and the matched route
+                // pattern, and nothing else — no email, no path, no body.
+                // A user id is not a credential and is enough to investigate.
+                tracing::warn!(
+                    %user_id,
+                    route = parts
+                        .extensions
+                        .get::<MatchedPath>()
+                        .map_or(super::request_id::UNMATCHED, MatchedPath::as_str),
+                    "admin route refused"
+                );
+                Err(ApiError::forbidden())
+            }
+        }
     }
 }
 

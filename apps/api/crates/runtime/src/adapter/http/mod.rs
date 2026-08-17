@@ -1,5 +1,6 @@
 //! The HTTP adapter: routes, middleware, and the server itself.
 
+pub mod admin;
 pub mod auth;
 pub mod builds;
 pub mod catalog;
@@ -14,7 +15,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::Router;
-use axum::routing::{get, post, put};
+use axum::routing::{get, patch, post, put};
 use tokio::net::TcpListener;
 
 use crate::platform::state::AppState;
@@ -50,6 +51,8 @@ pub fn router(state: AppState) -> Router {
         .route("/catalog/suggestions", post(catalog::suggest))
         .route("/parts", get(parts::search).post(parts::suggest))
         .route("/parts/{id}", get(parts::detail))
+        .route("/admin/users/{id}/vehicles", get(admin::vehicles))
+        .route("/admin/users/{id}/role", patch(admin::set_role))
         // `/vehicles/order` is declared before `/vehicles/{id}` so the literal
         // wins; otherwise "order" is parsed as a vehicle id and every reorder
         // is a 400.

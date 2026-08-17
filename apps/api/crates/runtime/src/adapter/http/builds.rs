@@ -11,7 +11,6 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
-use sqlx::types::BigDecimal;
 use time::Date;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
@@ -68,73 +67,6 @@ impl From<Modification> for ModificationResponse {
     }
 }
 
-impl ModificationResponse {
-    /// The same mapping as [`From<Modification>`], except `cost` goes through
-    /// [`visible_cost`] instead of always being shown.
-    ///
-    /// Every other place this type is built already knows the caller owns
-    /// the car — `for_vehicle` and the modification-write endpoints all fail
-    /// with [`BuildError::NotFound`] before reaching a response otherwise.
-    /// `GET /builds` is the one place that is not true: the build on the
-    /// page may belong to somebody else, and only its `visibility` said the
-    /// caller may see the build at all — never its cost.
-    fn filtered(
-        m: Modification,
-        cost_visibility: Visibility,
-        owner_id: Uuid,
-        viewer_id: Uuid,
-    ) -> Self {
-        let cost = visible_cost(m.cost.clone(), cost_visibility, owner_id, viewer_id);
-        Self {
-            cost,
-            ..Self::from(m)
-        }
-    }
-}
-
-/// The cost, if this viewer may see it.
-///
-/// Filtered here, server-side, from the `cost_visibility` the row already
-/// carries — no extra query, and the client is never trusted to hide a
-/// number. A cost that reaches the wire cannot be recalled.
-///
-/// What each of the three settings means for a modification's cost:
-/// - `Private` — only the vehicle's owner. Everyone else gets `null`.
-/// - `Community` — any signed-in caller, which today is every caller: every
-///   endpoint on this server requires authentication, the same fact
-///   [`crate::adapter::postgres::build_repo::find_build_visible`] notes for
-///   the build itself.
-/// - `Public` — the same as `Community`, for the same reason, until an
-///   unauthenticated surface exists to actually tell them apart.
-///
-/// The owner's own view is unconditional: `owner_id == viewer_id`
-/// short-circuits the setting, so a `Private` build never hides its own
-/// numbers from the person who paid them.
-#[must_use]
-fn visible_cost(
-    cost: Option<BigDecimal>,
-    setting: Visibility,
-    owner_id: Uuid,
-    viewer_id: Uuid,
-) -> Option<String> {
-    // Listed explicitly rather than `!= Private`, and the difference is what
-    // happens when the enum grows. This repo extends closed sets with
-    // `ALTER TYPE … ADD VALUE`, so an `Unlisted` or `Followers` added later
-    // would make every cost on the platform visible to everyone under `!=` —
-    // no compile error, no failing test, no review signal.
-    //
-    // Naming the permitted values fails CLOSED instead: a new variant hides
-    // costs until somebody decides otherwise, and this match is where they are
-    // forced to decide. Same property the `ServiceCategory` conversions rely
-    // on, where the compiler reports the drift rather than a user does.
-    let allowed =
-        owner_id == viewer_id || matches!(setting, Visibility::Community | Visibility::Public);
-    allowed
-        .then_some(cost)
-        .flatten()
-        .map(|amount| amount.with_scale(2).to_string())
-}
-
 #[derive(Debug, Serialize)]
 pub struct BuildResponse {
     pub id: Uuid,
@@ -173,8 +105,8 @@ impl From<BuildPhoto> for BuildPhotoResponse {
     }
 }
 
-/// One row of `GET /builds` — a build the caller may see, its modifications
-/// with `cost` filtered per [`visible_cost`], and its photos.
+/// One row of `GET /builds` — a build the caller may see, its modifications,
+/// and its photos.
 #[derive(Debug, Serialize)]
 pub struct BuildListItem {
     pub id: Uuid,
@@ -188,14 +120,17 @@ pub struct BuildListItem {
 }
 
 impl BuildListItem {
-    fn from_detail(detail: BuildDetail, viewer_id: Uuid) -> Self {
+    /// The cost on each modification is already filtered — see
+    /// [`crate::adapter::postgres::build_repo::modifications_for`], which
+    /// nulls it in the query rather than here. This mapping used to take a
+    /// `viewer_id` and apply the filter itself; a filter at the boundary is a
+    /// filter somebody has to remember to call.
+    fn from_detail(detail: BuildDetail) -> Self {
         let BuildDetail {
             build,
             modifications,
             photos,
         } = detail;
-        let cost_visibility = build.cost_visibility;
-        let owner_id = build.owner_id;
 
         Self {
             id: build.id,
@@ -204,10 +139,7 @@ impl BuildListItem {
             visibility: build.visibility,
             nickname: build.nickname,
             described_as: build.described_as,
-            modifications: modifications
-                .into_iter()
-                .map(|m| ModificationResponse::filtered(m, cost_visibility, owner_id, viewer_id))
-                .collect(),
+            modifications: modifications.into_iter().map(Into::into).collect(),
             photos: photos.into_iter().map(Into::into).collect(),
         }
     }
@@ -382,7 +314,7 @@ pub async fn list(
         items: page
             .items
             .into_iter()
-            .map(|detail| BuildListItem::from_detail(detail, caller.user_id))
+            .map(BuildListItem::from_detail)
             .collect(),
         next_cursor: page.next_cursor,
     }))
@@ -644,49 +576,5 @@ mod tests {
                 .expect("tomorrow exists"),
         );
         assert!(request.check().is_ok());
-    }
-
-    #[test]
-    fn a_stranger_never_sees_a_private_cost_and_the_owner_always_sees_their_own() {
-        // Five mutations of this function survived the whole suite, including
-        // deleting the filter from the call path outright — the highest-risk
-        // line in the module, held there by nothing. This is the cheapest
-        // thing that changes that: no database, four arguments, one Option.
-        let owner = Uuid::now_v7();
-        let stranger = Uuid::now_v7();
-        let cost = || Some(BigDecimal::from(1_200_000));
-
-        // The owner check comes first and unconditionally. A private setting
-        // must never hide a person's own numbers from themselves.
-        for setting in [
-            Visibility::Private,
-            Visibility::Community,
-            Visibility::Public,
-        ] {
-            assert_eq!(
-                visible_cost(cost(), setting, owner, owner),
-                Some("1200000.00".to_owned()),
-                "the owner must see their own cost at {setting:?}"
-            );
-        }
-
-        assert_eq!(
-            visible_cost(cost(), Visibility::Private, owner, stranger),
-            None,
-            "a private cost must not reach a stranger"
-        );
-        for setting in [Visibility::Community, Visibility::Public] {
-            assert_eq!(
-                visible_cost(cost(), setting, owner, stranger),
-                Some("1200000.00".to_owned()),
-                "{setting:?} is visible to any signed-in caller today"
-            );
-        }
-
-        assert_eq!(
-            visible_cost(None, Visibility::Public, owner, owner),
-            None,
-            "no cost recorded stays no cost, not a zero"
-        );
     }
 }

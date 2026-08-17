@@ -26,7 +26,7 @@ use crate::shared::request_id::RequestId;
 pub const HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
 /// What a request that matched no route is called in the log.
-const UNMATCHED: &str = "unmatched";
+pub(super) const UNMATCHED: &str = "unmatched";
 
 /// Probe traffic arrives every few seconds and says nothing when healthy.
 /// Logged at debug so a normal log is about requests people made.

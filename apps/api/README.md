@@ -22,6 +22,15 @@ make be-migrate    # apply migrations and exit
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 ```
 
+`anakmobil` also takes one command that is not a process role — there is no `make` target for it, since it wants a specific email and an interactive reason:
+
+```bash
+cd apps/api
+echo "reason" | cargo run --bin anakmobil -- grant-admin <email>
+```
+
+Grants the first platform admin, when there is none. Reads the reason from stdin rather than from an argument, because an argument lands in shell history and in every `ps` listing on the box. Succeeds only when the platform has zero admins — which is a legitimate state, and this is the way back from it.
+
 Postgres comes from `docker-compose.yml` at the repository root — **`pgvector/pgvector`, not `postgres`**, because the first migration enables the extension and the stock image cannot migrate at all:
 
 ```bash
@@ -51,7 +60,9 @@ parts catalog. Everything AI is not built yet.
 | `DELETE /vehicles/{id}` | `204` | ownership |
 | `PUT /vehicles/order` | `204` | every listed car is the caller's |
 | `GET /vehicles/{id}/summary` | `200` | ownership — spend, and what the car is due for |
-| `GET /builds` | `200` | own builds plus `community`/`public` ones, cursor paged; cost hidden per `cost_visibility` unless the caller owns the car |
+| `GET /admin/users/{id}/vehicles` | `200` | platform admin — that person's cars, with no plate, VIN, price, or spend |
+| `PATCH /admin/users/{id}/role` | `200` / `204` | platform admin, re-checked inside the transaction; `204` when the account already has that role, so a retry is safe |
+| `GET /builds` | `200` | own builds plus `community`/`public` ones, cursor paged; cost is nulled **in the query** per `cost_visibility` unless the caller owns the car |
 | `PUT /vehicles/{id}/build` | `204` | ownership |
 | `GET /vehicles/{id}/build` | `200` | ownership — the build with its modifications, two queries |
 | `GET /vehicles/{id}/services` | `200` | ownership, cursor paged, newest first |

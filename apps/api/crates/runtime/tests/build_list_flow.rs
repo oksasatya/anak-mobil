@@ -498,8 +498,21 @@ async fn a_stranger_sees_no_modification_costs_when_the_car_keeps_them_private()
         .iter()
         .find(|item| item["vehicle_id"] == car)
         .expect("the community build is missing from a stranger's list");
+    // Assert the modification itself survived before asserting its cost is
+    // gone. `serde_json`'s `[0]` on an empty array is `Null`, so a bare
+    // `is_null()` cannot tell "the cost was hidden" from "the whole modification
+    // vanished" — and moving the filter into the WHERE clause would do exactly
+    // the latter while leaving this assertion green.
+    let stranger_mods = stranger_build["modifications"]
+        .as_array()
+        .expect("a list of modifications");
+    assert_eq!(
+        stranger_mods.len(),
+        1,
+        "the modification itself must survive — only its cost is hidden"
+    );
     assert!(
-        stranger_build["modifications"][0]["cost"].is_null(),
+        stranger_mods[0]["cost"].is_null(),
         "a stranger saw a cost the car's owner kept private"
     );
 }
@@ -833,5 +846,147 @@ async fn the_cursor_cannot_be_used_to_probe() {
     assert_eq!(
         with_real["data"], with_phantom["data"],
         "paging past a real private build differs from paging past an id nobody issued"
+    );
+}
+
+#[tokio::test]
+async fn the_cost_matrix_holds_for_every_setting_and_both_viewers() {
+    // The replacement for the unit test that pinned `visible_cost`. Five
+    // mutations of that function once survived the whole suite, including
+    // deleting the filter from the call path outright, which is why it
+    // existed. The filter now lives in `modifications_for`'s CASE expression,
+    // so the same matrix has to be asserted through a real query.
+    let (app, _pool) = app!();
+    let owner = a_signed_in_person(&app).await;
+    let stranger = a_signed_in_person(&app).await;
+
+    // One car per cost_visibility setting, each with a priced modification
+    // and a community-visible build so the stranger can see the build at all.
+    let mut cars = Vec::new();
+    for setting in ["private", "community", "public"] {
+        let car = a_car(&app, &owner).await;
+
+        // `PUT /vehicles/{id}` is a full replace, not a patch — `check()`
+        // requires a `variant_id` or a non-blank `described_as`, so the body
+        // must repeat what `a_car` set or this 422s on every setting.
+        let updated = send(
+            &app,
+            "PUT",
+            &format!("/vehicles/{car}"),
+            Some(json!({
+                "described_as": "Toyota Avanza 2019",
+                "cost_visibility": setting
+            })),
+            Some(&owner),
+        )
+        .await;
+        assert_eq!(
+            updated.status(),
+            StatusCode::NO_CONTENT,
+            "setting {setting}"
+        );
+
+        let saved = send(
+            &app,
+            "PUT",
+            &format!("/vehicles/{car}/build"),
+            Some(json!({ "visibility": "community" })),
+            Some(&owner),
+        )
+        .await;
+        assert_eq!(saved.status(), StatusCode::NO_CONTENT);
+
+        let part = an_existing_part(&app, &owner, &format!("Matrix {}", Uuid::now_v7())).await;
+        let added = send(
+            &app,
+            "POST",
+            &format!("/vehicles/{car}/build/modifications"),
+            Some(json!({ "part_id": part, "cost": "1200000" })),
+            Some(&owner),
+        )
+        .await;
+        assert_eq!(added.status(), StatusCode::CREATED);
+
+        cars.push((setting, car));
+    }
+
+    // The owner check comes first and unconditionally: a private setting must
+    // never hide a person's own numbers from themselves.
+    let owner_items = all_visible_builds(&app, &owner).await;
+    for (setting, car) in &cars {
+        let build = owner_items
+            .iter()
+            .find(|item| item["vehicle_id"] == *car)
+            .unwrap_or_else(|| panic!("the owner's own {setting} build is missing"));
+        assert_eq!(
+            build["modifications"][0]["cost"], "1200000.00",
+            "cost_visibility={setting} hid an owner's own cost from themselves"
+        );
+    }
+
+    let stranger_items = all_visible_builds(&app, &stranger).await;
+    for (setting, car) in &cars {
+        let build = stranger_items
+            .iter()
+            .find(|item| item["vehicle_id"] == *car)
+            .unwrap_or_else(|| panic!("the community {setting} build is missing"));
+        // The modification must survive regardless of setting — an empty array
+        // would read as `Null` and make the private branch pass vacuously.
+        let mods = build["modifications"]
+            .as_array()
+            .expect("a list of modifications");
+        assert_eq!(
+            mods.len(),
+            1,
+            "{setting}: the modification itself must survive — only its cost is hidden"
+        );
+        let cost = &mods[0]["cost"];
+        if *setting == "private" {
+            assert!(cost.is_null(), "a private cost reached a stranger");
+        } else {
+            assert_eq!(
+                *cost, "1200000.00",
+                "{setting} must be visible to any signed-in caller today"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_modification_with_no_cost_stays_null_rather_than_becoming_a_zero() {
+    // The sixth assertion the deleted unit test carried. "No cost recorded"
+    // and "cost hidden from you" are both null on the wire, and that is
+    // deliberate — but a filter that turned an absent cost into "0.00" would
+    // be a number the owner never typed.
+    let (app, _pool) = app!();
+    let owner = a_signed_in_person(&app).await;
+    let car = a_car(&app, &owner).await;
+    let part = an_existing_part(&app, &owner, &format!("Unpriced {}", Uuid::now_v7())).await;
+
+    let added = send(
+        &app,
+        "POST",
+        &format!("/vehicles/{car}/build/modifications"),
+        Some(json!({ "part_id": part })),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(added.status(), StatusCode::CREATED);
+
+    let items = all_visible_builds(&app, &owner).await;
+    let build = items
+        .iter()
+        .find(|item| item["vehicle_id"] == car)
+        .expect("the owner's own build is missing");
+    // The owner always sees their own modifications, so an empty array here
+    // would be a different bug — assert the row is present, then that its
+    // absent cost is null rather than a fabricated zero.
+    let mods = build["modifications"]
+        .as_array()
+        .expect("a list of modifications");
+    assert_eq!(mods.len(), 1, "the owner's own modification is missing");
+    assert!(
+        mods[0]["cost"].is_null(),
+        "an unpriced modification became a number the owner never typed"
     );
 }
