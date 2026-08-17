@@ -23,7 +23,24 @@ macro_rules! setup {
         let (Ok(database_url), Ok(redis_url)) =
             (std::env::var("DATABASE_URL"), std::env::var("REDIS_URL"))
         else {
-            eprintln!("SKIPPED: set DATABASE_URL and REDIS_URL to run the catalog tests");
+            // A missing database used to `return`, and cargo reported the test
+            // as PASSING — it captures stderr for passing tests, so the SKIPPED
+            // line never reached anyone. Measured: thirteen tests "passing" in
+            // 0.00s having executed nothing, and it caught somebody halfway
+            // through verifying a sabotage, which is when it does most damage.
+            //
+            // Failing loudly is the default now. Somebody who genuinely wants to
+            // run the unit tests without a database opts out on purpose:
+            //
+            //     AM_SKIP_INTEGRATION=1 cargo test
+            //
+            // `make be-test` loads .env, so the normal path never sees this.
+            assert!(
+                std::env::var("AM_SKIP_INTEGRATION").is_ok(),
+                "DATABASE_URL and REDIS_URL are unset. Run `make be-test`, which loads .env. \
+                 To skip the integration suites deliberately, set AM_SKIP_INTEGRATION=1."
+            );
+            eprintln!("SKIPPED: AM_SKIP_INTEGRATION is set");
             return;
         };
         let Ok(pool) = anakmobil_runtime::adapter::postgres::connect(&database_url) else {

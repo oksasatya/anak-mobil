@@ -253,8 +253,21 @@ pub async fn find(conn: &mut PgConnection, id: Uuid) -> Result<Option<Part>, sql
 /// belongs to the merge story, and hiding them here would make a search miss
 /// the row a curator is trying to find.
 ///
-/// Complexity: `O(log n + k)` when only the category is given, using
-/// `parts_category_brand_idx`. With a text query it is `O(n)` — a sequential
+/// Complexity: **not** `O(log n + k)` on the category-only path, and the
+/// earlier comment claiming so is what a review had to measure to disprove.
+/// `parts_category_brand_idx` finds the category's rows and never orders
+/// them, because `ORDER BY` leads with `status` while the index is
+/// `(category, brand)` — so `LIMIT` is not an early stop. Measured at
+/// n=20,000: 3,333 rows read and heap-sorted to return 20, 329 buffers.
+/// The real bound is `O(m + limit·log limit)`, m = rows in the category.
+///
+/// At 50k wheels a 20-row page reads 50k rows. The cost today is nil on an
+/// empty catalog; the cost that survives is the comment, because whoever
+/// profiles it later reads that an index is doing the work and looks
+/// elsewhere. ponytail: when the ~10k marker below fires, the fix is
+/// `CREATE INDEX parts_browse_idx ON parts (category, status, brand, product_name, id)`.
+///
+/// With a text query it is `O(n)` — a sequential
 /// scan, because `ILIKE '%…%'` cannot use a B-tree.
 ///
 /// # Errors
