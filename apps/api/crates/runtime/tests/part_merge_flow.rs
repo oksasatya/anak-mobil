@@ -31,15 +31,20 @@ macro_rules! pool {
             return;
         };
         let Ok(pool) = anakmobil_runtime::adapter::postgres::connect(&database_url) else {
-            eprintln!("SKIPPED: DATABASE_URL unusable");
-            return;
+            panic!(
+                "DATABASE_URL is set but unusable. The database is part of this \
+                 suite, so a green board without it would prove nothing."
+            );
         };
         if anakmobil_runtime::adapter::postgres::migrate::run(&pool)
             .await
             .is_err()
         {
-            eprintln!("SKIPPED: could not migrate the test database");
-            return;
+            panic!(
+                "could not migrate the test database. Is Postgres running? \
+                 `make db-up`. A suite that skips here reports green having \
+                 executed nothing."
+            );
         }
         pool
     }};

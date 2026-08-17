@@ -64,8 +64,11 @@ macro_rules! app {
             .await
             .is_err()
         {
-            eprintln!("SKIPPED: could not migrate the test database");
-            return;
+            panic!(
+                "could not migrate the test database. Is Postgres running? \
+                 `make db-up`. A suite that skips here reports green having \
+                 executed nothing."
+            );
         }
         let redis = match anakmobil_runtime::adapter::redis::connect(&redis_url).await {
             Ok(redis) => redis,
