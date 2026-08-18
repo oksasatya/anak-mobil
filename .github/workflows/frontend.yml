@@ -9,14 +9,14 @@ on:
       - "apps/landing/**"
       - "packages/tokens/**"
       - "package.json"
-      - "package-lock.json"
+      - "bun.lock"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
       - "apps/landing/**"
       - "packages/tokens/**"
       - "package.json"
-      - "package-lock.json"
+      - "bun.lock"
       - ".github/workflows/frontend.yml"
 
 jobs:
@@ -25,25 +25,27 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: latest
 
+      # `--frozen-lockfile` is the `npm ci` equivalent: it fails rather than
+      # updating bun.lock, so CI cannot quietly resolve a different dependency
+      # tree than the one that was committed and reviewed.
       - name: Install
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       # Tokens first, and tested. The landing imports the stylesheet this
       # step generates, so a token regression must fail here rather than
       # reach a page and look like a styling bug.
       - name: Design tokens
-        run: npm run check --workspace @anakmobil/tokens
+        run: bun run --filter @anakmobil/tokens check
 
       - name: Type check
-        run: npm run check --workspace @anakmobil/landing
+        run: bun run --filter @anakmobil/landing check
 
       - name: Build
-        run: npm run build --workspace @anakmobil/landing
+        run: bun run --filter @anakmobil/landing build
 
       # AM-341 AC6: only the waitlist form may hydrate. Until that island
       # exists the correct count is zero, and this catches the accidental

@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT b.id, b.vehicle_id, b.notes, b.visibility AS \"visibility: Visibility\"\n        FROM builds b\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE v.owner_id = $1 AND b.vehicle_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "vehicle_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "vehicle_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "visibility: Visibility",
+        "type_info": {
+          "Custom": {
+            "name": "visibility",
+            "kind": {
+              "Enum": [
+                "private",
+                "community",
+                "public"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "visibility"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "cfb2ba078c4d543e85956137966fa7cbf935d9638c74357a42bb783d946a3970"
+}

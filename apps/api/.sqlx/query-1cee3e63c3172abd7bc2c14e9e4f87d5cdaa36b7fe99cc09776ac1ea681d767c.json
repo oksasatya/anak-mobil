@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO service_records\n            (id, vehicle_id, service_date, mileage_km, category,\n             parts_replaced, garage_name, cost, notes)\n        SELECT $1, v.id, $4, $5, $6, $7, $8, $9, $10\n        FROM vehicles v\n        WHERE v.id = $3 AND v.owner_id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Date",
+        "Int4",
+        {
+          "Custom": {
+            "name": "service_category",
+            "kind": {
+              "Enum": [
+                "engine_oil",
+                "transmission_oil",
+                "brakes",
+                "suspension",
+                "tune_up",
+                "air_conditioning",
+                "electrical",
+                "bodywork",
+                "other"
+              ]
+            }
+          }
+        },
+        "TextArray",
+        "Text",
+        "Numeric",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1cee3e63c3172abd7bc2c14e9e4f87d5cdaa36b7fe99cc09776ac1ea681d767c"
+}

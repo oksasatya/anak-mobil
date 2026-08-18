@@ -7,14 +7,21 @@
 //! - [`errors`] — the single failure-to-HTTP mapping
 //! - [`request_id`] — the identifier tying a log line to a response
 //! - [`response`] — the envelope every endpoint answers in
+//! - [`security`] — password hashing and token minting
 //!
-//! Deliberately absent until something needs them, each arriving with its
-//! first consumer rather than as an empty directory: `pagination` (no list
-//! endpoint yet), `validation` (no request DTO yet), and `security` (no
-//! authentication yet). A `datetime` module would hold one RFC 3339 helper,
-//! which lives in [`response`] instead.
+//! - [`iso_date`] — dates on the wire, because `time`'s own encoding is not one
+//! - [`pagination`] — the cursor contract every list endpoint shares
+//! - [`validation`] — the decimal-range guard shared by every numeric spec
+//!   on the wire
+//!
+//! Deliberately absent until something needs it: a `datetime` module would
+//! hold one RFC 3339 helper, which lives in [`response`] instead.
 
 pub mod errors;
 pub mod i18n;
+pub mod iso_date;
+pub mod pagination;
 pub mod request_id;
 pub mod response;
+pub mod security;
+pub mod validation;

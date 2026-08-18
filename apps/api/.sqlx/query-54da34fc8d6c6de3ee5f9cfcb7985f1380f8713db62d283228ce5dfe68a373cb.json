@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM service_records s\n        USING vehicles v\n        WHERE v.id = s.vehicle_id AND v.owner_id = $1 AND s.id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "54da34fc8d6c6de3ee5f9cfcb7985f1380f8713db62d283228ce5dfe68a373cb"
+}

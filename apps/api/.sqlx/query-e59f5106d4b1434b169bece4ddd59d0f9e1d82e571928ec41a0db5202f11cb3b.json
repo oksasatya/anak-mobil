@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE vehicles SET\n            variant_id = $3, nickname = $4, described_as = $5,\n            year = $6, colour = $7, mileage_km = $8, cost_visibility = $9\n        WHERE owner_id = $1 AND id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Int2",
+        "Text",
+        "Int4",
+        {
+          "Custom": {
+            "name": "visibility",
+            "kind": {
+              "Enum": [
+                "private",
+                "community",
+                "public"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e59f5106d4b1434b169bece4ddd59d0f9e1d82e571928ec41a0db5202f11cb3b"
+}

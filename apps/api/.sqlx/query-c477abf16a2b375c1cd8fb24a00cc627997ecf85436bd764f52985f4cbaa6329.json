@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE vehicles AS v\n        SET position = ordering.position\n        FROM UNNEST($2::uuid[], $3::int[]) AS ordering(id, position)\n        WHERE v.id = ordering.id AND v.owner_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c477abf16a2b375c1cd8fb24a00cc627997ecf85436bd764f52985f4cbaa6329"
+}

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Design tokens generated from docs/design.md — one source, three consumers",
+  "description": "Design tokens generated from docs/design.md \u2014 one source, three consumers",
   "main": "./src/tokens.js",
   "types": "./src/tokens.d.ts",
   "exports": {
@@ -19,8 +19,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "test": "node --test test/*.test.mjs",
-    "check": "npm run build && npm test"
+    "build": "bun scripts/build.mjs",
+    "test": "bun test test/",
+    "check": "bun run build && bun run test"
   }
 }

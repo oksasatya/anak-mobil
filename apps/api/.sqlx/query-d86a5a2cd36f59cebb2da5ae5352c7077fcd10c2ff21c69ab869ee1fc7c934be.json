@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO parts (\n            id, category, brand, product_name, status, suggested_by,\n            wheel_diameter_in, wheel_width_in, offset_et_mm,\n            pcd_bolt_count, pcd_diameter_mm, center_bore_mm,\n            tyre_width_mm, tyre_aspect_ratio, tyre_rim_diameter_in,\n            suspension_kind, spring_rate_kgmm\n        )\n        VALUES ($1, $2, $3, $4, 'pending', $5,\n                $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\n        ON CONFLICT ON CONSTRAINT parts_identity DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "parts",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "modification_category",
+            "kind": {
+              "Enum": [
+                "wheels",
+                "tyres",
+                "suspension",
+                "brakes",
+                "engine",
+                "intake",
+                "exhaust",
+                "ecu",
+                "transmission",
+                "exterior",
+                "interior",
+                "lighting",
+                "audio",
+                "electronics",
+                "other"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text",
+        "Uuid",
+        "Numeric",
+        "Numeric",
+        "Int2",
+        "Int2",
+        "Numeric",
+        "Numeric",
+        "Int2",
+        "Int2",
+        "Numeric",
+        {
+          "Custom": {
+            "name": "suspension_type",
+            "kind": {
+              "Enum": [
+                "coilover",
+                "lowering_spring",
+                "air"
+              ]
+            }
+          }
+        },
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d86a5a2cd36f59cebb2da5ae5352c7077fcd10c2ff21c69ab869ee1fc7c934be"
+}

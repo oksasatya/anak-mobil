@@ -54,8 +54,10 @@ const styles = StyleSheet.create({
 ```bash
 cd packages/tokens
 # edit src/tokens.js
-npm run check      # regenerates dist/ and runs the tests
+bun run check      # regenerates dist/ and runs the tests
 ```
+
+Bun, never npm. The tests are written against `node:test` and Bun runs them unchanged, so no rewrite was needed to drop Node.
 
 `dist/` is generated. Editing it directly works until the next build overwrites it, so don't.
 

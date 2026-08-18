@@ -1,0 +1,120 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.id, m.build_id, m.part_id, m.install_date, m.mileage_km,\n               CASE WHEN v.owner_id = $2\n                      OR v.cost_visibility IN ('community', 'public')\n                    THEN m.cost\n               END AS \"cost?: BigDecimal\",\n               m.garage_name, m.notes, m.removed_at\n        FROM modifications m\n        JOIN builds b   ON b.id = m.build_id\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE m.build_id = ANY($1)\n        ORDER BY m.build_id, m.install_date DESC NULLS LAST, m.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "build_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "build_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "part_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "part_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "install_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "install_date"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "mileage_km",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "mileage_km"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "cost?: BigDecimal",
+        "type_info": "Numeric",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "garage_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "garage_name"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "removed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "modifications",
+            "name": "removed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      null,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "969053a17e3f1252119bb772f2e90f38abeff51e651e3295432b95fdb6b91a6d"
+}

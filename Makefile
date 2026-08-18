@@ -7,20 +7,137 @@
 
 API := apps/api
 LANDING := @anakmobil/landing
+# A scratch database for the sqlx cache. Empty by construction — see be-prepare.
+PREPARE_URL := postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil_prepare
 TOKENS := @anakmobil/tokens
 
 .DEFAULT_GOAL := help
-.PHONY: help be-run be-web be-worker be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
+.PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check check
+
+# Load .env and hand every value to the recipes below.
+#
+# `-include` rather than `include`: a fresh clone has no .env yet, and the
+# help target must still work. `export` then passes them to every recipe.
+#
+# This is not convenience. The integration tests return early and report
+# PASSING when DATABASE_URL and REDIS_URL are absent, so a shell without them
+# produces a full green board that executed nothing. Loading them here is what
+# makes `make be-test` mean what it says.
+-include .env
+export
+
+# Compile against the committed .sqlx cache, never the live database.
+#
+# Without this, `DATABASE_URL` being set makes the sqlx macros query the
+# server and IGNORE the cache — so a stale cache passes here and fails on
+# any machine without a database. It also makes the schema a build
+# dependency, which is circular: `be-migrate` could not compile against an
+# empty database, because the thing that creates the tables needs them to
+# already exist.
+#
+# `?=` so `SQLX_OFFLINE=false make be-prepare` can regenerate the cache.
+SQLX_OFFLINE ?= true
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+db-up: ## Start Postgres (pgvector). Redis is assumed to be running locally
+	docker compose up -d postgres
+	@printf 'waiting for postgres'
+	@until docker compose exec -T postgres pg_isready -U postgres -d anakmobil >/dev/null 2>&1; do printf '.'; sleep 1; done
+	@echo ' ready on 127.0.0.1:55432'
+
+db-up-all: ## Start Postgres and Redis, for a machine with no local Redis
+	docker compose --profile redis up -d
+	@printf 'waiting for postgres'
+	@until docker compose exec -T postgres pg_isready -U postgres -d anakmobil >/dev/null 2>&1; do printf '.'; sleep 1; done
+	@echo ' ready'
+
+db-down: ## Stop the containers, keeping the data
+	docker compose --profile redis down
+
+db-reset: ## Stop and DELETE the database volume, then start clean
+	docker compose --profile redis down -v
+	$(MAKE) db-up
+
+db-drop: ## Drop and recreate the database, then migrate — faster than db-reset
+	@docker compose exec -T postgres psql -U postgres -q \
+		-c 'DROP DATABASE IF EXISTS anakmobil WITH (FORCE)' -c 'CREATE DATABASE anakmobil'
+	@$(MAKE) --no-print-directory be-migrate
+	@echo 'empty. `make db-seed` adds the starter catalog.'
+
+# Reference data only, and that distinction is the point.
+#
+# The repository rule is that nothing is seeded with fake data: no invented
+# community counts, no fabricated activity, because the platform launches
+# empty and the low-data state is designed as a primary experience rather
+# than a fallback. A catalog of cars that genuinely exist is not that — it is
+# reference data, and `POST /catalog/suggestions` already exists for the cars
+# it is missing.
+#
+# So there is no `db-seed-users` and no fixture garage. Nothing here creates a
+# person, a vehicle, a build, or a service record. Develop against the empty
+# state, because that is what the first real user sees.
+db-seed: ## Load the starter vehicle catalog — real cars only, no fabricated activity
+	@test "$${APP_ENV:-development}" = development \
+		|| { echo 'refusing: APP_ENV is $(APP_ENV), not development'; exit 1; }
+	@docker compose exec -T postgres psql -U postgres -d anakmobil -q -v ON_ERROR_STOP=1 \
+		< $(API)/seeds/catalog.sql
+
+db-psql: ## Open a psql shell on the development database
+	docker compose exec postgres psql -U postgres -d anakmobil
+
+# `make dev` — every surface that exists, in one terminal.
+#
+# Stopping this cleanly took three attempts, and each failure is why a line
+# below looks the way it does.
+#
+# `cargo run` execs the server as a CHILD, so killing cargo leaves
+# `anakmobil` holding :8080. `set -m` puts each background job in its own
+# process group and `kill -- -PID` then takes the whole subtree.
+#
+# That is still not enough for the landing server. Astro re-execs itself and
+# the survivor ends up re-parented to launchd in a process group of its own
+# — outside the group we just killed. Measured: PPID 1, PGID equal to its own
+# pid. So the trap also sweeps the two ports this target is documented to
+# own. Blunt, and precise enough: these are ports we started ourselves,
+# seconds earlier.
+#
+# Without all of it, ctrl-c leaves a listener behind and the next `make dev`
+# dies with "address already in use" — which would make this worse than
+# opening two terminals by hand.
+#
+# awk rather than sed for the log prefix: BSD awk has fflush(), so lines
+# appear as they happen instead of in 4KB bursts.
+#
+# Every comment here sits ABOVE the recipe on purpose. A `#` line inside a
+# recipe is handed to the shell, and one ending in a backslash continues
+# the comment onto the next line — silently swallowing the command that
+# follows it. That is not hypothetical; it is how the first version of this
+# target ran nothing at all while reporting success.
+#
+# When apps/mobile is scaffolded, add one more line to the group:
+#   ( bun run --filter @anakmobil/mobile start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) &
+dev: db-up ds-build ## Run every surface that exists — API and landing, together
+	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
+	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
+	@echo 'ctrl-c stops both'
+	@echo
+	@set -m; \
+		trap 'kill -- -$$api -$$landing 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
+		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
+		( bun run --filter $(LANDING) dev 2>&1 | awk '{print "[landing] " $$0; fflush()}' ) & landing=$$!; \
+		wait
 
 be-web: ## Run the API in its web role
 	cd $(API) && cargo run --bin anakmobil -- web
 
 be-worker: ## Run the API in its worker role
 	cd $(API) && cargo run --bin anakmobil -- worker
+
+be-migrate: ## Apply database migrations and exit
+	cd $(API) && cargo run --bin anakmobil -- migrate
 
 be-fmt: ## Format the backend
 	cd $(API) && cargo fmt
@@ -33,6 +150,36 @@ be-test: ## Run backend tests
 
 be-cov: ## Backend coverage (requires cargo-llvm-cov)
 	cd $(API) && cargo llvm-cov --workspace --summary-only
+
+# Regenerate against a THROWAWAY EMPTY database, never the one you develop on.
+#
+# sqlx infers Postgres nullability by reading the query plan, and the plan
+# changes with table statistics. Measured: with 546 vehicles and 1062 users in
+# the table, `find_owned`'s four LEFT JOINs make the planner switch strategy
+# and sqlx decides `v.id` is nullable — the macro then fails to compile against
+# a schema that has not changed. The same check on an empty database passes.
+#
+# That alone would be an annoyance. What makes it dangerous is that
+# `cargo sqlx prepare` CLEARS .sqlx before regenerating, so a failed run leaves
+# an empty cache and breaks the offline build too — the one thing the cache
+# exists to keep working.
+#
+# CI always has a fresh database, which is why this only ever bites locally.
+# So: build one, use it, drop it.
+be-prepare: ## Regenerate the committed .sqlx cache against a throwaway empty database
+	@echo 'preparing against a scratch database, not $(shell echo $$DATABASE_URL | sed "s|.*/||")'
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE IF EXISTS anakmobil_prepare' -c 'CREATE DATABASE anakmobil_prepare'
+	@cd $(API)/crates/runtime && DATABASE_URL=$(PREPARE_URL) sqlx migrate run >/dev/null
+	cd $(API) && SQLX_OFFLINE=false DATABASE_URL=$(PREPARE_URL) cargo sqlx prepare --workspace -- --all-targets
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE anakmobil_prepare'
+
+# Same reasoning as be-prepare: check against an empty database, because that
+# is what CI has and what the cache was generated from.
+be-sqlx-check: ## Fail if the committed .sqlx cache is stale (what CI runs)
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE IF EXISTS anakmobil_prepare' -c 'CREATE DATABASE anakmobil_prepare'
+	@cd $(API)/crates/runtime && DATABASE_URL=$(PREPARE_URL) sqlx migrate run >/dev/null
+	cd $(API) && SQLX_OFFLINE=false DATABASE_URL=$(PREPARE_URL) cargo sqlx prepare --workspace --check -- --all-targets
+	@docker compose exec -T postgres psql -U postgres -q -c 'DROP DATABASE anakmobil_prepare'
 
 be-audit: ## Check dependencies for advisories (requires cargo-audit)
 	cd $(API) && cargo audit
@@ -53,10 +200,10 @@ be-check: be-fmt be-lint be-test be-boundary ## Everything the backend CI gate r
 # --- Design system -----------------------------------------------------------
 
 ds-build: ## Regenerate the CSS artifacts from the token source
-	npm run build --workspace $(TOKENS)
+	bun run --filter $(TOKENS) build
 
 ds-check: ## Regenerate the tokens and test them
-	npm run check --workspace $(TOKENS)
+	bun run --filter $(TOKENS) check
 
 # --- Landing -----------------------------------------------------------------
 #
@@ -64,16 +211,16 @@ ds-check: ## Regenerate the tokens and test them
 # and a stale dist/ there means the page silently ships yesterday's palette.
 
 fe-dev: ds-build ## Run the landing dev server
-	npm run dev --workspace $(LANDING)
+	bun run --filter $(LANDING) dev
 
 fe-build: ds-build ## Build the landing site
-	npm run build --workspace $(LANDING)
+	bun run --filter $(LANDING) build
 
 fe-preview: ## Serve the built landing site (what Lighthouse must measure)
-	npm run preview --workspace $(LANDING)
+	bun run --filter $(LANDING) preview
 
 fe-check: ds-check ## Type-check and build the landing site
-	npm run gate --workspace $(LANDING)
+	bun run --filter $(LANDING) gate
 	@echo "landing gate green"
 
 check: be-check fe-check ## Every gate in the repository

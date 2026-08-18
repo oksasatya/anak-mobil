@@ -1,9 +1,21 @@
-//! The Postgres connection pool.
+//! The Postgres connection pool, the migration runner, and the repositories.
 //!
-//! Connectivity only. Tables, migrations, and queries arrive with AM-353;
-//! nothing here writes SQL, which is why the `sqlx` `macros` feature is not
-//! enabled yet — `query!` needs either a live schema or a committed `.sqlx`
-//! cache, and neither exists.
+//! Queries go through the `sqlx` macros, so they are checked against the real
+//! schema at compile time. That needs either a reachable `DATABASE_URL` or the
+//! committed `.sqlx` cache — CI uses the cache, which is why
+//! `cargo sqlx prepare` has to run whenever a query changes.
+//!
+//! Repositories arrive with the stories that need them, each bringing its own
+//! migration.
+
+pub mod build_repo;
+pub mod catalog_repo;
+pub mod migrate;
+pub mod part_repo;
+pub mod service_repo;
+pub mod summary_repo;
+pub mod user_repo;
+pub mod vehicle_repo;
 
 use std::time::Duration;
 
@@ -15,12 +27,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Build the pool.
 ///
-/// Does not verify the credentials — `connect_lazy` opens no socket, so a
-/// database that is down at boot does not stop the process from starting.
-/// That is deliberate: a service that refuses to start when Postgres is
-/// briefly unavailable cannot report *why* it is unhealthy, and a restart
-/// loop is harder to diagnose than a running process answering `/readyz`
-/// with a reason.
+/// `connect_lazy` opens no socket, so constructing the pool cannot fail on a
+/// database that is briefly unreachable — the first real use connects.
+///
+/// For the **worker** role that means the process starts and reports its
+/// state through the probe rather than through a restart loop. For the
+/// **web** role it does not, and deliberately so: migrations run before the
+/// listener binds, so an unreachable database stops startup. A service that
+/// cannot reach its database cannot serve anything either, and refusing to
+/// start is more honest than listening on a port and answering 503 forever.
 ///
 /// # Errors
 ///

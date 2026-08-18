@@ -6,7 +6,7 @@ An Indonesia-first automotive platform: a digital garage that remembers your car
 
 Three things make it different from a forum with a database attached. Every vehicle is a **structured record** — brand, model, generation, variant — so a question about wheel fitment can be answered with numbers instead of guesses. Every AI answer carries **evidence you can open**, pointing back at the build or repair it came from. And every answer states **how confident it is**, computed from how well the evidence matches *your* car, never from how similar the text looked.
 
-> **Early.** The backend serves two health probes and nothing else — no schema, no authentication, no business endpoints. The landing page is a holding page. The mobile app and backoffice are not scaffolded. Nothing is deployed anywhere. See [Status](#status) for what actually exists.
+> **Early.** The backend has accounts, a garage, and a browsable catalog — no builds, no service history, nothing AI. The landing page is a holding page. The mobile app and backoffice are not scaffolded. Nothing is deployed anywhere. See [Status](#status) for what actually exists.
 
 ---
 
@@ -157,13 +157,36 @@ Three surfaces, one palette. Change the orange once and all three move; there is
 
 ## Getting started
 
-Requires Rust 1.96+ and Node 22+, plus Docker for Postgres and Redis once AM-353 lands.
+Requires Rust 1.96+, [Bun](https://bun.sh) 1.3+, and Docker.
 
 ```bash
-npm install
-cp apps/api/.env.example apps/api/.env
+bun install
+cp .env.example .env
+make db-up         # Postgres with pgvector, on :55432
 make check         # every gate in the repository
 ```
+
+**Only Postgres comes from Docker, and only because of pgvector** — a stock
+install does not carry the extension. Redis is assumed to be running on your
+machine already; if it is not, `make db-up-all` starts one in a container on
+the same port, so `REDIS_URL` never changes either way.
+
+Postgres publishes on **55432**, not 5432, because a Homebrew postgres is
+commonly already listening there. Pointing at that one instead does not fail
+cleanly — it is a real server with the wrong database and no pgvector.
+
+```bash
+make db-up-all     # also start Redis, for a machine without one
+make db-psql       # a psql shell on the development database
+make db-down       # stop, keeping the data
+make db-reset      # stop, DELETE the data, start clean
+```
+
+The `Makefile` loads `.env` and exports it to every recipe. That is not
+convenience: the integration tests return early and report **passing** when
+`DATABASE_URL` and `REDIS_URL` are absent, so a shell without them produces a
+full green board that executed nothing. Loading them here is what makes
+`make be-test` mean what it says.
 
 Individually:
 
@@ -171,6 +194,7 @@ Individually:
 make be-check      # fmt · clippy · tests · the domain-boundary assertion
 make be-web        # start the HTTP role
 make be-worker     # start the background role
+make be-migrate    # apply migrations and exit
 
 make ds-check      # regenerate the design tokens and test them
 make fe-dev        # landing dev server on :4321
@@ -226,18 +250,26 @@ Both run in CI on every push that touches a page or a token.
 
 Foundation only.
 
-`apps/api` serves HTTP. It validates its configuration, logs structurally, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. There are still **no tables, no entities, and no business endpoints** — the only routes are the two probes.
+`apps/api` serves HTTP. It validates its configuration, logs structurally, applies migrations before it listens, answers `/healthz` and `/readyz`, and drains on `SIGTERM`. The response envelope and the failure-to-HTTP mapping exist and are tested. The vehicle catalog schema exists; its rows are a separate content project.
+
+Accounts exist: register, sign in, refresh, sign out, with sessions in Redis so a sign-out takes effect on the next request rather than whenever a token happens to expire.
+
+Vehicles exist: add, edit, delete, reorder, with plate, VIN, and purchase price held in a separate table so a query cannot return them by accident.
+
+The catalog can be browsed, and a car it does not have can be reported.
+
+There is still **no service history and no builds** — the rest of AM-360, split into slices.
 
 `packages/tokens` generates all three artifacts and is tested. `apps/landing` builds a holding page; the real landing page in AM-341 waits on the waitlist form and its storage (AM-346), because a signup form with nowhere to post is worse than no form.
 
-Nothing is deployed. There is no database schema and no authentication.
+Nothing is deployed. There is no authentication.
 
 Work is tracked in Jira project **AM**. The build order and its reasoning live on epic **AM-349**; the current sprint carries the label `sprint-1`.
 
 | Next | |
 |---|---|
-| AM-353 | Database schema and migrations |
-| AM-354 | Authentication |
+| AM-360 | Service history with cost privacy (slice 3) |
+| AM-360 | Server-computed summaries and reminders (slice 4) |
 | AM-341 | The real landing page |
 
 ---
@@ -263,6 +295,8 @@ The `CLAUDE.md` files are instructions for AI coding agents working in this repo
 The repository is public so the work can be read, not because it is ready for contributors. There is no schema yet, so most of what a contribution would touch does not exist.
 
 If something here is wrong — a claim that does not hold, an approach with a failure mode I have missed — open an issue. That is genuinely useful at this stage, and more useful than a pull request against a foundation that is still moving.
+
+If you do open a pull request, branch from `dev` and target `dev`. `main` is the release branch and only ever receives merges from `dev`.
 
 ## Licence
 

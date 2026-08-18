@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, source_part_id, target_part_id, undone_at\n        FROM part_merges\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "source_part_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "source_part_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "target_part_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "target_part_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "undone_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "part_merges",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "6989dcc3983109bbe1db10c6b0349bab96bbc59a58cb5d8a3021a4aaecea784b"
+}

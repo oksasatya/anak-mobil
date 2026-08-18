@@ -1,13 +1,21 @@
 //! The HTTP adapter: routes, middleware, and the server itself.
 
+pub mod admin;
+pub mod auth;
+pub mod builds;
+pub mod catalog;
+pub mod parts;
 pub mod probe;
 pub mod request_id;
+pub mod services;
+pub mod summary;
+pub mod vehicles;
 
 use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, patch, post, put};
 use tokio::net::TcpListener;
 
 use crate::platform::state::AppState;
@@ -29,6 +37,57 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(probe::healthz))
         .route("/readyz", get(probe::readyz))
+        .route("/auth/register", post(auth::register))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/refresh", post(auth::refresh))
+        .route("/auth/logout", post(auth::logout))
+        .route("/catalog/brands", get(catalog::brands))
+        .route("/catalog/brands/{id}/models", get(catalog::models))
+        .route(
+            "/catalog/models/{id}/generations",
+            get(catalog::generations),
+        )
+        .route("/catalog/generations/{id}/variants", get(catalog::variants))
+        .route("/catalog/suggestions", post(catalog::suggest))
+        .route("/parts", get(parts::search).post(parts::suggest))
+        .route("/parts/{id}", get(parts::detail))
+        .route("/admin/users/{id}/vehicles", get(admin::vehicles))
+        .route("/admin/users/{id}/role", patch(admin::set_role))
+        // `/vehicles/order` is declared before `/vehicles/{id}` so the literal
+        // wins; otherwise "order" is parsed as a vehicle id and every reorder
+        // is a 400.
+        .route("/vehicles/order", put(vehicles::reorder))
+        .route("/vehicles", get(vehicles::list).post(vehicles::create))
+        .route("/vehicles/{id}/summary", get(summary::vehicle))
+        .route("/builds", get(builds::list))
+        .route(
+            "/vehicles/{id}/build",
+            get(builds::detail).put(builds::save),
+        )
+        .route(
+            "/vehicles/{id}/services",
+            get(services::list).post(services::create),
+        )
+        .route(
+            "/vehicles/{id}/build/modifications",
+            post(builds::add_modification),
+        )
+        .route(
+            "/services/{id}",
+            get(services::detail)
+                .put(services::update)
+                .delete(services::delete),
+        )
+        .route(
+            "/modifications/{id}",
+            put(builds::update_modification).delete(builds::remove_modification),
+        )
+        .route(
+            "/vehicles/{id}",
+            get(vehicles::detail)
+                .put(vehicles::update)
+                .delete(vehicles::delete),
+        )
         .with_state(state)
         .layer(axum::middleware::from_fn(request_id::middleware))
 }
@@ -47,9 +106,16 @@ where
     let local: SocketAddr = listener.local_addr()?;
     tracing::info!(%local, "http listening");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown)
-        .await?;
+    // `into_make_service_with_connect_info` is what puts the peer address into
+    // the request, and the login rate limiter reads it. Without it the handler
+    // still compiles and then fails at runtime on every call — the extractor
+    // finds no `ConnectInfo` extension — so the two must change together.
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await?;
     Ok(())
 }
 

@@ -77,10 +77,20 @@ What stays pure is **policy** — no async, no I/O, just data in and a decision 
 
 ```rust
 // domain/src/garage/policy.rs
-pub fn derive_reminders(vehicle: &Vehicle, history: &[ServiceRecord], today: Date) -> Vec<Reminder>
+pub fn derive_reminders(history: &[LastService], odometer_km: Option<i32>, today: Date) -> Vec<Reminder>
 ```
 
-Tested by constructing values and asserting. No database, no mock, no async runtime.
+Tested by constructing values and asserting. No database, no mock, no
+async runtime. `today` is an argument rather than a call to the clock,
+which is what lets a test put a car two years past its oil change without
+waiting two years — and the same reason the rollup query takes its
+twelve-month cutoff as a parameter instead of writing `CURRENT_DATE`.
+
+`ServiceCategory` exists twice on purpose: once in `domain` and once in
+`adapter/postgres` carrying the sqlx and serde derives the domain crate
+has no dependencies for. The persistence model is not the domain model,
+and the two `From` impls are non-exhaustive matches the moment either
+side gains a variant — the compiler reports the drift.
 
 ## Repositories take a connection, never a pool
 
@@ -90,6 +100,29 @@ pub async fn insert_service(tx: &mut PgConnection, rec: &ServiceRecord) -> Resul
 ```
 
 This is what lets the **use case** own the transaction boundary — open, authorise, write, re-read under `SELECT … FOR UPDATE`, call policy, write the result, commit. A repository holding its own pool turns every call into a separate transaction, and two concurrent requests then interleave into stale derived state.
+
+## Rollups are one query for every car, not one per car
+
+A garage list that shows spend and overdue counts per row is the exact
+shape that becomes a query per car without anybody noticing, because the
+loop is over rendered rows rather than over `await`s. `summary_repo`
+therefore answers for **every one of the owner's cars at once**, even
+when the caller wants a single car: one aggregate scan for the totals,
+one `DISTINCT ON` for the latest service of each kind.
+
+The property is structural — `service_summary::for_list` makes exactly
+two repository calls, neither inside a loop — and it is **not pinned by a
+test**. Counting queries needs `pg_stat_statements`, which needs
+`shared_preload_libraries` and a server restart, which a GitHub Actions
+service container cannot set; such a test would pass locally and silently
+skip in CI. What *is* tested is the failure batching actually produces:
+`one_cars_totals_never_land_on_another_cars_row` catches totals grouped
+by the wrong key or result sets zipped out of order — plausible numbers
+on the wrong car. If you add a third rollup, keep it out of the loop and
+say so here.
+
+Summing money is left to the database. A rollup computed in Rust means
+loading every service record a car has ever had to produce one number.
 
 ## Repositories do not get traits
 
@@ -110,6 +143,102 @@ Compile-time macros (`query!`, `query_as!`). Never build SQL with `format!`.
 **The trap:** when `DATABASE_URL` is set, the macros query the live database and silently ignore the committed `.sqlx` cache. A stale cache then passes locally and fails on any machine without a database. Builds therefore run with `SQLX_OFFLINE=true`, and CI runs `cargo sqlx prepare --check --workspace`. Re-run `cargo sqlx prepare` and commit the result whenever a query or migration changes.
 
 Migrations live in `crates/runtime/migrations/`, not at the workspace root — `sqlx::migrate!()` and `#[sqlx::test]` resolve the path relative to `CARGO_MANIFEST_DIR`.
+
+## Authentication
+
+Sessions live in Redis and tokens are opaque, never JWTs. A signed JWT cannot be revoked, only waited out, so logout would not be an act.
+
+Rules that are easy to undo by accident:
+
+- **Redis stores digests, never tokens.** `token_digest` is the only way a token becomes a key.
+- **`sess:{id}` is the sole authority.** Authenticating requires both the token mapping and the session. Adding a shortcut that trusts the token mapping alone would make logout stop working, silently.
+- **Rotation and session creation are Lua scripts.** Splitting either into separate commands reintroduces a race that mints two live token chains for one session. `tests/session_store.rs` fails against the non-atomic version — that is checked, not assumed.
+- **A replayed refresh revokes every session but does not fence the account.** Fencing would let a stolen token permanently lock out its victim. Only account deletion fences.
+- **Every credential failure returns the same status, code, and message.** Unknown email, wrong password, unparseable stored hash. Splitting them turns login into an account-enumeration oracle.
+- **Login costs one argon2 verification whether or not the account exists.** Returning early on a missing user leaks the same thing through timing.
+- **Never log a token, a digest, or an email on the auth path.** A user id is not a credential and is enough to investigate.
+
+The integration tests need a real Postgres and a real Redis.
+
+**They do NOT skip loudly, and this sentence used to claim they did.** Without `DATABASE_URL` and `REDIS_URL` the `app!` macro returns early and every test reports `ok` — and the word `SKIPPED` never reaches cargo's output, because cargo captures stderr for passing tests. Measured: 13 tests "pass" having executed nothing.
+
+**Every one of those guards now fails loudly rather than skipping** — missing URLs, an unusable `DATABASE_URL`, a database that will not migrate, an unreachable Redis. Deliberately skipping is still possible and now has to be said out loud:
+
+```bash
+AM_SKIP_INTEGRATION=1 cargo test    # unit tests only, on purpose
+make be-test                         # the normal path; loads .env
+```
+
+**The first fix for this was incomplete, and the incompleteness is the lesson.** Only the missing-URL guard was made loud; the three below it still returned. So when the Docker daemon died, the whole suite reported fifteen green boards with no database at all — the same false green, one guard over, and reported as closed. A partial fix to a silent-failure bug is worse than none, because it buys confidence the code has not earned.
+
+## Migrations
+
+**One migration per story, not one schema up front.** A table written before a query uses it is usually the wrong shape, and fixing it costs a migration anyway — so the work is not saved, only done when there is least information. Expand-and-contract exists so the schema can grow this way.
+
+```bash
+cd crates/runtime && sqlx migrate add -r <name>
+```
+
+Always `-r`. Writing the down migration is what forces you to notice a change that cannot be undone, while choosing a different one is still cheap.
+
+Migrations run automatically at the start of the **web** role, before the listener binds. The worker deliberately does not run them — one role owns applying them, and a worker reading a schema the web role has not migrated yet is exactly the case expand-and-contract makes safe. `anakmobil migrate` applies them and exits; use it in CI, and for anything long enough that a health check would kill the process mid-migration.
+
+**A migration that has been applied is never edited.** sqlx stores a checksum and refuses to continue when it changes, because two databases would otherwise carry the same version number and different schemas. Fix a mistake with a new migration.
+
+**One boundary, and it is narrow enough to check.** That rule exists to prevent divergence *between databases*. A migration still on an unmerged branch, applied only to your own throwaway development database, has no other copy to diverge from — so it may be amended in place, followed by `make db-drop` to rebuild from the amended file. **Four** conditions, all required: **not merged**, **not pushed**, **nothing else is running against that database**, and **you reset it**. The moment it reaches `dev` — or a branch anybody else, including CI, may have migrated — the rule is absolute again.
+
+The reset is self-enforcing rather than an honour system: sqlx stores a checksum in `_sqlx_migrations` and refuses to run against an amended file, so skipping it stops you at the tool rather than at your own discipline.
+
+**The third condition was added after this rule failed in exactly the way it did not anticipate.** It assumed one person and one database. With two or three agents sharing this development database, amending a migration and resetting *your* copy leaves every concurrent process holding the old checksum — and `sqlx::migrate!` then fails for **every test file in the workspace**, not just the one you touched. It failed **silently**, because the `app!` macro swallows the message and cargo captures stderr for passing tests, so the whole suite reported green having executed nothing.
+
+The recovery is `make db-drop`. The lesson is the condition: amend only when you are the only thing touching that database.
+
+Use it for a mistake found hours after writing, where three corrective migrations against a table created the same afternoon would read as three errors rather than one correct schema. Do not use it to avoid writing a down migration, and never for a migration somebody else may have run.
+
+### Expand, then contract
+
+A deploy has both versions running at once, so a schema change must be readable by the old code:
+
+1. Add the new column nullable, or with a default. Never rename in place — add, backfill, and drop in a **later** release.
+2. Ship the code that writes both and reads the new one.
+3. Drop the old column in a release after that.
+
+### Conventions every migration follows
+
+- **UUID primary keys**, generated by the application as v7. Time-sortable, so inserts land at the end of the index rather than scattering across it; safe in a URL, unlike a serial, which tells anyone who looks how many rows exist.
+- **`TIMESTAMPTZ`, never `TIMESTAMP`.** The server is UTC and the users are in three Indonesian time zones.
+- **`created_at` and `updated_at` on every table**, with `updated_at` maintained by the `set_updated_at()` trigger rather than by application code — including a manual `UPDATE` run during an incident.
+- **Every foreign key gets an index.** PostgreSQL indexes primary keys and unique constraints; it never indexes a foreign key, and the missing one turns a parent delete into a sequential scan of the child.
+- **Money is `NUMERIC`, never a float.** Rupiah has no subunit in practice, and that is not a reason to store money in a type that cannot represent it exactly.
+- **Automotive specification is numeric.** "PCD 5x114.3" is a bolt count and a circle diameter — two columns. Offset is signed, because a deep-dish wheel has a negative ET and an unsigned column would reject exactly the wheels people fit. Stored as text, every comparison would parse first, and `5X114.3` and `5x114,3` would be different cars.
+- **Closed sets are native enums.** `ALTER TYPE … ADD VALUE` does not break a running older version. Removing a value is genuinely hard, which is the honest cost of declaring the set closed.
+- **Content tables carry a status the indexer can see.** Reported, hidden, and deleted content is never cited as evidence, and that requires a path that pulls it back out of the index.
+
+## `part_merges` is append-only by discipline, not by constraint
+
+The table's own comment says a merge is never deleted, because undo reads it
+to know what the previous state was. The database does not enforce that:
+verified, an `UPDATE` can rewrite `source_part_id` on a landed merge and a
+`DELETE` can remove history outright.
+
+Acceptable today — no admin surface, one application role, and no statement
+anywhere that deletes from it. What would enforce it when there is one: a
+`BEFORE UPDATE` trigger permitting only the `undone_at NULL → non-NULL`
+transition, or `REVOKE DELETE` from the application role. The same trigger
+would also force an undo to name its actor, which the one-way CHECK cannot.
+
+Written here rather than in the migration because the migration is merged and
+its checksum is frozen — and because a comment claiming a guarantee the schema
+does not provide is the defect this ticket already burned a finding on.
+
+`role_changes` is the version that does. Its migration ships a
+`BEFORE UPDATE OR DELETE` trigger that raises, so the guarantee is in the
+schema rather than in a comment, and both foreign keys are `ON DELETE
+RESTRICT` rather than `SET NULL` — a referential action is an ordinary write
+to the child row, and the trigger would reject it, taking the whole parent
+`DELETE` down with it. `part_merges` predates that reasoning and its migration
+is merged, so its checksum is frozen; the same trigger would fit it whenever a
+new migration is worth writing.
 
 ## Async
 

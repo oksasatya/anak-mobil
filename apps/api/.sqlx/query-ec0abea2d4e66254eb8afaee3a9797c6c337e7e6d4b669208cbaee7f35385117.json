@@ -1,0 +1,113 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            b.id,\n            b.vehicle_id,\n            b.notes,\n            b.visibility AS \"visibility: Visibility\",\n            v.variant_id,\n            v.nickname,\n            v.described_as\n        FROM builds b\n        JOIN vehicles v ON v.id = b.vehicle_id\n        WHERE (b.visibility <> 'private' OR v.owner_id = $1)\n          AND ($2::uuid IS NULL OR b.id < $2)\n        ORDER BY b.id DESC\n        LIMIT $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "vehicle_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "vehicle_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "visibility: Visibility",
+        "type_info": {
+          "Custom": {
+            "name": "visibility",
+            "kind": {
+              "Enum": [
+                "private",
+                "community",
+                "public"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "visibility"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "variant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "variant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "nickname",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "nickname"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "described_as",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vehicles",
+            "name": "described_as"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ec0abea2d4e66254eb8afaee3a9797c6c337e7e6d4b669208cbaee7f35385117"
+}

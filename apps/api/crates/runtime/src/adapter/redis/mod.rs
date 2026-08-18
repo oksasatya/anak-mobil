@@ -1,7 +1,8 @@
 //! The Redis client.
 //!
-//! Connectivity only. Sessions, rate limiting, and caching arrive with the
-//! stories that need them.
+//! Connectivity, plus the session store in [`session`].
+//!
+//! Rate limiting and caching arrive with the stories that need them.
 //!
 //! `ConnectionManager` rather than a bare `Client`: a bare client only parses
 //! the URL and never opens a socket, so a readiness check built on one reports
@@ -9,6 +10,9 @@
 //! multiplexed connection and reconnects on its own, which readiness needs —
 //! otherwise the first dropped connection stays dropped and the instance never
 //! recovers.
+
+pub mod rate_limit;
+pub mod session;
 
 use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Client};

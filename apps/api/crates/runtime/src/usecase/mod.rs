@@ -34,3 +34,13 @@
 //! policy functions live in the domain crate.
 
 // Populated per bounded context as the API stories land — AM-360 onward.
+
+pub mod auth;
+pub mod builds;
+pub mod catalog;
+pub mod garage;
+pub mod part_merge;
+pub mod parts;
+pub mod roles;
+pub mod service_history;
+pub mod service_summary;

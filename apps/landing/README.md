@@ -10,6 +10,8 @@ make fe-check      # type check + build — the gate
 make fe-preview    # serve the built output, which is what Lighthouse must measure
 ```
 
+Package manager is [Bun](https://bun.sh), never npm — see the repository `CLAUDE.md`. Astro builds under Bun unchanged; Node is not required.
+
 Never measure performance against `fe-dev`. The dev server ships unminified code and a hot-reload socket, and the score it produces is fiction in both directions.
 
 ## Why Astro

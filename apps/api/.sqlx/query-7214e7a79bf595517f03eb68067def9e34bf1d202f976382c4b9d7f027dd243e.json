@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO parts (id, category, brand, product_name, status)\n        VALUES ($1, 'wheels', 'Merek', $2, 'approved')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7214e7a79bf595517f03eb68067def9e34bf1d202f976382c4b9d7f027dd243e"
+}
