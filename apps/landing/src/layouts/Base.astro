@@ -11,18 +11,47 @@ interface Props {
   description: string;
   /** Page path, e.g. "/" or "/tentang". Canonical is built from it. */
   path?: string;
+  /** Extra JSON-LD objects for this page (e.g. FAQPage), merged after the
+   *  site-wide Organization + WebSite entities. */
+  schema?: Record<string, unknown>[];
 }
 
-const { title, description, path = "/" } = Astro.props;
+const { title, description, path = "/", schema = [] } = Astro.props;
 
 const canonical = new URL(path, Astro.site).href;
+const ogImage = new URL("/og-default.jpg", Astro.site).href;
+const siteUrl = new URL("/", Astro.site).href;
+
+// Site-wide structured data. Organization + WebSite are emitted on every page;
+// a page may add its own (FAQPage, etc.) via the `schema` prop.
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "AnakMobil.id",
+    url: siteUrl,
+    logo: new URL("/mark-dark.png", Astro.site).href,
+    description: "Garasi digital dan komunitas untuk pemilik mobil di Indonesia.",
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "AnakMobil.id",
+    url: siteUrl,
+    inLanguage: "id-ID",
+  },
+  ...schema,
+];
 ---
 
 <!doctype html>
-<html lang="id">
+<!-- Dark-only surface: the theme is fixed here, no toggle, no prefers-color-scheme
+     switch. The design system's dark values live under [data-theme="dark"]. -->
+<html lang="id" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
@@ -35,14 +64,24 @@ const canonical = new URL(path, Astro.site).href;
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    {/* og:image and twitter:card arrive with the real share image in AM-341.
-        A card pointing at a missing file renders as a broken preview, which
-        reads worse than a plain link. */}
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AnakMobil.id — garasi digital buat mobil kamu" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
 
     {/* Matches the token so the browser chrome does not flash a different
         colour than the page behind it. */}
     <meta name="theme-color" content="#1D232A" />
+
+    {/* Structured data: site-wide Organization + WebSite, plus any page schema. */}
+    {jsonLd.map((obj) => (
+      <script type="application/ld+json" is:inline set:html={JSON.stringify(obj)} />
+    ))}
   </head>
   <body>
     <slot />

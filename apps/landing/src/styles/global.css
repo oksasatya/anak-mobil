@@ -93,6 +93,47 @@ button {
   border-radius: var(--radius-xs);
 }
 
+/* Design-system utility classes (docs/design.md §11). Global rather than
+ * scoped because components and pages both apply them by name.
+ *
+ * .am-spec: tabular, lining figures so automotive numbers scan and columns
+ * line up — 18×8.5 ET40 · 225/40 R18 · 146.120 KM · Rp 14.500.000.
+ * .am-label: the uppercase micro-kicker over a section or card. */
+.am-spec {
+  font-feature-settings: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.01em;
+}
+
+.am-label {
+  font: var(--type-m-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Scroll-reveal — a light enhancement over already-visible content, shared by
+ * every page. Uses a scroll-driven view timeline where supported; content is
+ * fully visible without it, and it never runs under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: am-reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 22%;
+    }
+    @keyframes am-reveal-in {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

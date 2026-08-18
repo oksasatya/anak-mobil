@@ -1,0 +1,41 @@
+---
+/**
+ * Page shell: the document head (via Base), the sticky nav, a flex column that
+ * keeps the footer at the bottom on short pages, and the footer. Every page
+ * slots its <main> content in, so the nav/footer wiring lives in one place.
+ */
+import Base from "./Base.astro";
+import SiteNav from "../components/SiteNav.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+
+type Active = "beranda" | "fitur" | "komunitas" | "tentang" | "daftar" | "none";
+export interface Props {
+  title: string;
+  description: string;
+  path: string;
+  active?: Active;
+  /** Page-specific JSON-LD, forwarded to Base (e.g. Beranda's FAQPage). */
+  schema?: Record<string, unknown>[];
+}
+const { title, description, path, active = "none", schema = [] } = Astro.props;
+---
+
+<Base title={title} description={description} path={path} schema={schema}>
+  <div class="page">
+    <SiteNav active={active} />
+    <main><slot /></main>
+    <SiteFooter />
+  </div>
+</Base>
+
+<style>
+  .page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-background);
+  }
+  main {
+    flex: 1;
+  }
+</style>

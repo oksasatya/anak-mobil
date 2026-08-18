@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import sitemap from "@astrojs/sitemap";
 
 /**
  * Astro ships zero kilobytes of JavaScript unless a component asks for it.
@@ -10,15 +11,17 @@ import { defineConfig } from "astro/config";
  * Deliberately not configured yet:
  *   - @astrojs/react   — arrives with the waitlist island, which is the only
  *                        part of the page that needs a browser runtime.
- *   - @astrojs/sitemap — worth a line once there is more than one page.
  *
- * `site` is set now because canonical URLs, Open Graph tags, and any future
- * sitemap all read from it, and a wrong value there is invisible until a
- * crawler gets it wrong.
+ * `site` is set now because canonical URLs, Open Graph tags, and the sitemap
+ * all read from it, and a wrong value there is invisible until a crawler gets
+ * it wrong.
  */
 export default defineConfig({
   site: "https://anakmobil.id",
   trailingSlash: "never",
+  // Generates sitemap-index.xml + sitemap-0.xml at build time from every page
+  // under src/pages. robots.txt points crawlers at it.
+  integrations: [sitemap()],
   build: {
     // One stylesheet in <head> beats a request per component. The page is
     // small enough that inlining costs less than the round trips would.

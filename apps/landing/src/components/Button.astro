@@ -1,0 +1,137 @@
+---
+/**
+ * Button / call-to-action. Mirrors the design system's AmButton
+ * (docs/design.md §42–43): primary is graphite, `brand` is the orange CTA
+ * used sparingly, `secondary` is a bordered ghost.
+ *
+ * Renders a real <a> when `href` is set and a <button> otherwise. The export
+ * drew every CTA as a <button> that navigated in JavaScript; a control that
+ * navigates is a link, and a real <a> is crawlable and works without JS —
+ * which matters on a static page whose whole point is shipping no runtime.
+ *
+ * Heights are 44/44/52, not the export's 36/44/52: 44px is the touch-target
+ * floor (AM-273), and an interactive control below it fails that gate. `sm`
+ * keeps the tighter type and padding at the floor height.
+ */
+type Variant = "primary" | "brand" | "secondary" | "destructive";
+type Size = "sm" | "md" | "lg";
+
+export interface Props {
+  variant?: Variant;
+  size?: Size;
+  href?: string;
+  type?: "button" | "submit";
+  fullWidth?: boolean;
+  disabled?: boolean;
+  class?: string;
+}
+
+const {
+  variant = "primary",
+  size = "md",
+  href,
+  type = "button",
+  fullWidth = false,
+  disabled = false,
+  class: className,
+} = Astro.props;
+
+const Tag = href ? "a" : "button";
+const classes = ["btn", `v-${variant}`, `s-${size}`, fullWidth && "full", className]
+  .filter(Boolean)
+  .join(" ");
+---
+
+<Tag
+  class={classes}
+  href={href}
+  type={href ? undefined : type}
+  aria-disabled={href && disabled ? "true" : undefined}
+  disabled={!href && disabled ? true : undefined}
+>
+  <slot />
+</Tag>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--touch-target-min);
+    padding: 0 18px;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    font: 600 14px/1 var(--font-sans);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+
+  /* Sizes — all at or above the 44px touch floor. */
+  .s-sm {
+    padding: 0 14px;
+    font-size: 13px;
+  }
+  .s-lg {
+    min-height: 52px;
+    padding: 0 22px;
+    font-size: 16px;
+  }
+  .full {
+    width: 100%;
+  }
+
+  .v-primary {
+    background: var(--brand-800);
+    color: #ffffff;
+  }
+  .v-primary:hover {
+    background: var(--brand-700);
+  }
+  .v-primary:active {
+    background: var(--brand-900);
+  }
+
+  .v-brand {
+    background: var(--accent-500);
+    color: #ffffff;
+  }
+  .v-brand:hover {
+    background: var(--accent-400);
+  }
+  .v-brand:active {
+    background: var(--accent-600);
+  }
+
+  .v-secondary {
+    background: transparent;
+    color: var(--color-text-primary);
+    border-color: var(--color-border-strong);
+  }
+  .v-secondary:hover,
+  .v-secondary:active {
+    background: var(--color-surface-subtle);
+  }
+
+  .v-destructive {
+    background: var(--color-danger);
+    color: #ffffff;
+  }
+  .v-destructive:hover {
+    background: #c33434;
+  }
+  .v-destructive:active {
+    background: #b02f2f;
+  }
+
+  .btn[disabled],
+  .btn[aria-disabled="true"] {
+    background: var(--color-surface-subtle);
+    color: var(--color-text-tertiary);
+    border-color: transparent;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+</style>

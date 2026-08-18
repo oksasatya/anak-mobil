@@ -1,0 +1,282 @@
+---
+/**
+ * Site header. Sticky, brand mark + wordmark, centered page links, and the
+ * waitlist CTA. Below 920px it collapses to a compact bar with a burger that
+ * opens a drawer.
+ *
+ * One small piece of vanilla JavaScript runs here — the mobile drawer. This is
+ * progressive enhancement, not the React island: the links work with no JS,
+ * and the page still ships zero framework runtime (AM-341 AC6). The site is
+ * dark-only, so there is no theme toggle. The waitlist form is the only React
+ * island, and it lives on /daftar.
+ */
+import Button from "./Button.astro";
+import Icon from "./Icon.astro";
+
+type Active = "beranda" | "fitur" | "komunitas" | "tentang" | "daftar" | "none";
+export interface Props {
+  active?: Active;
+}
+const { active = "none" } = Astro.props;
+
+const items = [
+  { key: "beranda", label: "Beranda", href: "/" },
+  { key: "fitur", label: "Fitur", href: "/fitur" },
+  { key: "komunitas", label: "Komunitas", href: "/komunitas" },
+  { key: "tentang", label: "Tentang", href: "/tentang" },
+];
+---
+
+<header class="nav">
+  <div class="bar">
+    <a class="brand" href="/" aria-label="AnakMobil.id beranda">
+      <span class="mark">
+        <img src="/mark-dark.png" alt="" width="30" height="30" />
+      </span>
+      <span class="word">AnakMobil<span class="dot">.id</span></span>
+    </a>
+
+    <nav class="links only-desktop" aria-label="Navigasi utama">
+      {
+        items.map((it) => (
+          <a
+            class:list={["link", { active: it.key === active }]}
+            href={it.href}
+            aria-current={it.key === active ? "page" : undefined}
+          >
+            {it.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="actions">
+      <span class="only-desktop">
+        <Button variant="brand" href="/daftar">Daftar Waitlist</Button>
+      </span>
+
+      <span class="only-mobile">
+        <Button variant="brand" size="sm" href="/daftar">Daftar</Button>
+      </span>
+      <button
+        class="burger only-mobile"
+        type="button"
+        data-drawer-toggle
+        aria-label="Buka menu"
+        aria-expanded="false"
+        aria-controls="site-drawer"
+      >
+        <span class="icon-closed"><Icon name="menu" size={20} /></span>
+        <span class="icon-open"><Icon name="x" size={20} /></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="drawer" id="site-drawer" data-drawer hidden>
+    <nav class="drawer-links" aria-label="Navigasi">
+      {
+        items.map((it) => (
+          <a
+            class:list={["drawer-link", { active: it.key === active }]}
+            href={it.href}
+            aria-current={it.key === active ? "page" : undefined}
+          >
+            {it.label}
+          </a>
+        ))
+      }
+      <a class="drawer-link" href="/daftar">Daftar waitlist</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-background);
+  }
+  .bar {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 28px);
+    /* Three zones: brand left, nav centered, actions right. The auto middle
+       column collapses to zero on mobile (links hidden), so brand and actions
+       fall to the two edges without extra rules. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    height: 64px;
+  }
+
+  .brand {
+    grid-column: 1;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    text-decoration: none;
+  }
+
+  .actions {
+    grid-column: 3;
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex: none;
+    display: block;
+  }
+  .mark img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    transform: scale(1.07);
+  }
+  .word {
+    font: 750 20px/1 var(--font-sans);
+    color: var(--color-text-primary);
+    letter-spacing: -0.01em;
+  }
+  .dot {
+    color: var(--accent-500);
+  }
+
+  .links {
+    grid-column: 2;
+    justify-self: center;
+    display: flex;
+    gap: 2px;
+  }
+  .link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    font: 500 14px/1 var(--font-sans);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    box-shadow: inset 0 -2px 0 transparent;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .link:hover {
+    color: var(--color-text-primary);
+  }
+  .link.active {
+    color: var(--color-text-primary);
+    font-weight: 650;
+    box-shadow: inset 0 -2px 0 var(--accent-500);
+  }
+
+  .burger {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .drawer {
+    display: block;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    border-bottom: 1px solid var(--color-border);
+    padding: 4px clamp(16px, 4vw, 28px) 20px;
+    background: var(--color-background);
+    box-shadow: var(--shadow-soft);
+  }
+  /* Respect the hidden attribute the script toggles, and never show the
+     drawer at desktop widths where the burger that opens it is gone. */
+  .drawer[hidden] {
+    display: none;
+  }
+  @media (min-width: 920px) {
+    .drawer {
+      display: none;
+    }
+  }
+  .drawer-links {
+    display: flex;
+    flex-direction: column;
+  }
+  .drawer-link {
+    display: flex;
+    align-items: center;
+    min-height: 50px;
+    font: 500 16px/1 var(--font-sans);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .drawer-link.active {
+    color: var(--color-text-primary);
+    font-weight: 650;
+  }
+
+  /* Responsive: single 920px breakpoint, matching the design. */
+  .only-desktop {
+    display: none;
+  }
+  .only-mobile {
+    display: inline-flex;
+  }
+  @media (min-width: 920px) {
+    .only-desktop {
+      display: inline-flex;
+    }
+    .only-mobile {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  // Mobile drawer. Vanilla, scoped to this header — no framework.
+  const drawer = document.querySelector<HTMLElement>("[data-drawer]");
+  const drawerBtn = document.querySelector<HTMLButtonElement>("[data-drawer-toggle]");
+  if (drawer && drawerBtn) {
+    const setOpen = (open: boolean) => {
+      drawer.hidden = !open;
+      drawerBtn.setAttribute("aria-expanded", String(open));
+      drawerBtn.setAttribute("aria-label", open ? "Tutup menu" : "Buka menu");
+      drawerBtn.classList.toggle("is-open", open);
+    };
+    drawerBtn.addEventListener("click", () => setOpen(drawer.hidden));
+    // Close when a link is chosen or on Escape.
+    drawer.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !drawer.hidden) setOpen(false);
+    });
+  }
+</script>
+
+<style>
+  /* Burger icon swap driven by the open class the script toggles. */
+  .burger .icon-open {
+    display: none;
+  }
+  .burger.is-open .icon-closed {
+    display: none;
+  }
+  .burger.is-open .icon-open {
+    display: inline-flex;
+  }
+</style>
