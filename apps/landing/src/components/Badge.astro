@@ -1,0 +1,56 @@
+---
+/**
+ * Small uppercase badge. Mirrors the design system's AmBadge — entity types
+ * and short markers. `neutral` is the default; the semantic tones tint their
+ * status colour and are never the orange accent (docs/design.md §15).
+ */
+type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "info";
+
+export interface Props {
+  tone?: Tone;
+  class?: string;
+}
+
+const { tone = "neutral", class: className } = Astro.props;
+const classes = ["badge", `t-${tone}`, className].filter(Boolean).join(" ");
+---
+
+<span class={classes}><slot /></span>
+
+<style>
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    font: 600 11px/14px var(--font-sans);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .t-neutral {
+    background: var(--color-surface-subtle);
+    color: var(--color-text-secondary);
+  }
+  .t-brand {
+    background: color-mix(in srgb, var(--accent-500) 12%, transparent);
+    color: var(--accent-600);
+  }
+  .t-success {
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
+  }
+  .t-warning {
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+    color: var(--warning);
+  }
+  .t-danger {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+  }
+  .t-info {
+    background: color-mix(in srgb, var(--info) 12%, transparent);
+    color: var(--info);
+  }
+</style>

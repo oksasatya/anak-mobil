@@ -64,6 +64,42 @@ export declare const typography: {
   readonly numericFeature: string;
 };
 
+export declare const type: {
+  readonly hero: string;
+  readonly h1: string;
+  readonly h2: string;
+  readonly h3: string;
+  readonly title: string;
+  readonly body: string;
+  readonly small: string;
+};
+
+export declare const typeMobile: Readonly<Record<
+  | "display"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "title"
+  | "body-lg"
+  | "body"
+  | "label"
+  | "caption"
+  | "micro",
+  string
+>>;
+
+export declare const elevation: {
+  readonly none: string;
+  readonly soft: { readonly light: string; readonly dark: string };
+};
+
+export declare const motion: {
+  readonly durationMicro: string;
+  readonly durationStandard: string;
+  readonly durationSheet: string;
+  readonly easeOut: string;
+};
+
 export declare const layout: {
   readonly pagePaddingMobile: number;
   readonly pagePaddingMobileLarge: number;
@@ -80,6 +116,10 @@ export declare const tokens: {
   readonly spacing: typeof spacing;
   readonly radius: typeof radius;
   readonly typography: typeof typography;
+  readonly type: typeof type;
+  readonly typeMobile: typeof typeMobile;
+  readonly elevation: typeof elevation;
+  readonly motion: typeof motion;
   readonly layout: typeof layout;
 };
 

@@ -1,84 +1,803 @@
 ---
 /**
- * Holding page.
+ * Beranda — the landing page (AM-341, epic E15).
  *
- * AM-341 replaces this with the real landing page — hero, product sections,
- * store links, and the waitlist form as a React island. The form and the
- * storage behind it are AM-346, and neither exists yet, so what ships now is
- * the smallest honest page: it says what AnakMobil is, admits it is not open
- * yet, and proves the token pipeline reaches the browser.
- *
- * Deliberately absent: a "Daftar tunggu" button that does nothing. A dead
- * control costs more trust than an empty page.
+ * Ported from the approved Claude Design page. The app is not in the stores
+ * yet, so the primary action everywhere is the waitlist, never a dead
+ * download. Nothing here shows invented data: the hero and the feature cards
+ * illustrate the empty first-run state honestly, because the platform
+ * launches empty and says so (docs/design.md; DESIGN.md).
  */
-import Base from "../layouts/Base.astro";
+import Shell from "../layouts/Shell.astro";
+import Button from "../components/Button.astro";
+import Card from "../components/Card.astro";
+import Badge from "../components/Badge.astro";
+import Icon from "../components/Icon.astro";
+import ServiceCard from "../components/ServiceCard.astro";
+import CtaBand from "../components/CtaBand.astro";
 
-const title = "AnakMobil.id — Garasi digital dan komunitas pemilik mobil";
+const title = "AnakMobil.id — Garasi digital buat mobil kamu";
 const description =
-  "Catat riwayat servis, rawat build, dan tanya soal mobilmu ke sesama pemilik. Sedang dibangun untuk pemilik mobil di Indonesia.";
+  "Riwayat servis yang tidak hilang saat mobil dijual, catatan build sebagai data, dan komunitas pemilik mobil yang sama. Masih dibangun — daftar waitlist dan jadi yang pertama.";
+
+// Single source for both the visible <details> accordion and the FAQPage
+// JSON-LD, so the structured data always matches what the reader sees (a
+// requirement for the FAQ rich result).
+const faq = [
+  {
+    q: "Kapan bisa dipakai?",
+    a: "Masih dibangun. Daftar waitlist, kami kabari sekali begitu pendaftaran dibuka, tanpa spam di antaranya.",
+  },
+  {
+    q: "Beneran gratis?",
+    a: "Kontribusi gratis selamanya, di semua tier. Tier berbayar nanti cuma buat kedalaman AI dan alat pribadi, bukan hak untuk ikut komunitas.",
+  },
+  {
+    q: "Data mobil pribadiku aman?",
+    a: "Plat, VIN, harga beli, dan biaya servis difilter di server. Ditutup secara default, dan kamu yang menentukan apa yang boleh dibagikan.",
+  },
+  {
+    q: "Mobil apa aja yang didukung?",
+    a: "Semua mobil penumpang di Indonesia. Mulai dari mobil pertamamu.",
+  },
+  {
+    q: "Udah ada isinya?",
+    a: "Belum, dan kami tidak mengarang. Platformnya mulai dari kosong dan mengakui itu. Yang pertama masuk yang menentukan bentuknya.",
+  },
+];
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faq.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
 ---
 
-<Base title={title} description={description} path="/">
-  <main>
-    <div class="shell">
-      <p class="mark">AnakMobil<span class="dot">.</span>id</p>
+<Shell title={title} description={description} path="/" active="beranda" schema={[faqSchema]}>
+  <!-- Hero -->
+      <section class="hero">
+        <img
+          class="hero-img"
+          src="/hero-1600.webp"
+          srcset="/hero-828.webp 828w, /hero-1280.webp 1280w, /hero-1600.webp 1600w"
+          sizes="100vw"
+          width="1672"
+          height="941"
+          alt=""
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="hero-scrim"></div>
+        <div class="container hero-inner">
+          <div class="hero-copy">
+            <h1>Garasi digital buat mobil kamu.</h1>
+            <p class="lede">
+              Riwayat servis yang tidak hilang saat mobilnya dijual. Catatan build yang rapi. Dan
+              orang yang pernah pasang part yang sama di mobil yang sama.
+            </p>
+            <div class="cta-row">
+              <Button variant="brand" size="lg" href="/daftar">Daftar Waitlist</Button>
+              <Button variant="secondary" size="lg" href="/fitur">Lihat fitur</Button>
+            </div>
+            <p class="hero-note">
+              Masih dibangun. Daftar sekarang, jadi yang pertama tahu waktu pendaftaran dibuka.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <h1>Garasi digital buat mobil kamu.</h1>
+      <!-- The problem -->
+      <section class="problem reveal">
+        <div class="container problem-grid">
+          <div class="problem-lead">
+            <h2>Cerita mobil kamu gampang hilang.</h2>
+            <p>
+              Nota servis tercecer di laci. Spek build cuma ada di kepala dan grup chat. Begitu
+              mobilnya pindah tangan, semuanya ikut hilang: pembeli mulai dari nol, dan kerja
+              rawatan kamu tidak kelihatan di harga jual.
+            </p>
+          </div>
+          <ul class="lost">
+            <li>
+              <span class="lost-x"></span>
+              <span class="lost-t">Nota servis</span>
+              <span class="lost-s">tercecer, lama-lama hilang</span>
+            </li>
+            <li>
+              <span class="lost-x"></span>
+              <span class="lost-t">Spek build</span>
+              <span class="lost-s">cuma di ingatan, susah dibandingkan</span>
+            </li>
+            <li>
+              <span class="lost-x"></span>
+              <span class="lost-t">Bukti rawatan</span>
+              <span class="lost-s">tidak kebawa waktu mobil dijual</span>
+            </li>
+          </ul>
+        </div>
+      </section>
 
-      <p class="lede">
-        Riwayat servis yang tidak hilang saat mobilnya dijual. Catatan build
-        yang rapi. Dan orang-orang yang pernah memasang part yang sama di mobil
-        yang sama.
-      </p>
+      <!-- Three capabilities -->
+      <section class="why reveal">
+        <div class="container">
+          <div class="am-label why-kicker">Kenapa AnakMobil</div>
+          <h2 class="why-title">Tiga hal yang beda di sini</h2>
 
-      <p class="note">
-        Masih dibangun. Halaman ini akan diganti begitu pendaftaran dibuka.
-      </p>
-    </div>
-  </main>
-</Base>
+          <div class="why-grid">
+            <a class="why-card wide" href="/fitur#riwayat">
+              <Card padding="24px" interactive fill>
+                <Icon name="history" size={26} color="var(--accent-500)" />
+                <h3>Riwayat servis yang bertahan</h3>
+                <p>
+                  Catat sekali — tanggal, KM, bengkel, biaya. Riwayatnya ikut mobil: pembeli
+                  berikutnya lihat catatan yang jelas, nilai mobil kamu ikut kejaga.
+                </p>
+                <div class="card-fill">
+                  <ServiceCard
+                    km="0 KM tercatat"
+                    when="Riwayat servis"
+                    note="Kosong dulu. Servis pertama kamu yang mengisinya."
+                  />
+                </div>
+                <span class="card-cta">
+                  Selengkapnya soal riwayat <Icon name="arrow-right" size={15} />
+                </span>
+              </Card>
+            </a>
+
+            <a class="why-card" href="/fitur#build">
+              <Card padding="24px" interactive fill>
+                <Icon name="wrench" size={26} color="var(--accent-500)" />
+                <h3>Build sebagai data, bukan album foto</h3>
+                <p>
+                  Offset, PCD, ukuran ban — tersimpan sebagai angka yang bisa dibandingkan, bukan
+                  caption di foto.
+                </p>
+                <div class="am-spec build-spec card-fill">18×8.5 ET40<br />225/40 R18</div>
+                <span class="card-cta">
+                  Lihat bentuk datanya <Icon name="arrow-right" size={15} />
+                </span>
+              </Card>
+            </a>
+
+            <a class="why-card" href="/fitur#tanya">
+              <Card padding="24px" interactive fill>
+                <Icon name="users" size={26} color="var(--accent-500)" />
+                <h3>Orang yang pernah di posisi kamu</h3>
+                <p>
+                  Tanya ke yang sudah pasang part yang sama di mobil yang sama — bukan forum umum
+                  yang jawabannya "tergantung".
+                </p>
+                <div class="badge-row card-fill">
+                  <Badge>Mobil sama</Badge>
+                  <Badge>Part sama</Badge>
+                </div>
+                <span class="card-cta">Cara nanyanya <Icon name="arrow-right" size={15} /></span>
+              </Card>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- How it works -->
+      <section class="how reveal">
+        <div class="container">
+          <div class="am-label kicker">Cara kerja</div>
+          <h2 class="sec-title">Tiga langkah, mulai dari kosong.</h2>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-n am-spec">01</span>
+              <h3>Catat mobilmu</h3>
+              <p>Tambah mobil: merek, model, generasi, tahun. Garasimu mulai terisi.</p>
+            </li>
+            <li class="step">
+              <span class="step-n am-spec">02</span>
+              <h3>Isi riwayat &amp; build</h3>
+              <p>Servis, part, spek velg dan ban. Tersimpan sebagai angka, bukan caption foto.</p>
+            </li>
+            <li class="step">
+              <span class="step-n am-spec">03</span>
+              <h3>Tanya &amp; bandingin</h3>
+              <p>Ke pemilik mobil yang sama. Jawaban dari pengalaman, bukan tebakan.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- For whom -->
+      <section class="who reveal">
+        <div class="container who-grid">
+          <div class="who-lead">
+            <h2 class="sec-title">Buat kamu yang…</h2>
+            <p class="who-sub">Satu tempat, dipakai tiga cara.</p>
+          </div>
+          <ul class="who-list">
+            <li>
+              <span class="who-icon"><Icon name="car" size={20} /></span>
+              <div>
+                <b>Pakai harian</b>
+                <span>Servis rutin kecatat, dengan pengingat yang dihitung dari riwayat mobilmu sendiri.</span>
+              </div>
+            </li>
+            <li>
+              <span class="who-icon"><Icon name="wrench" size={20} /></span>
+              <div>
+                <b>Suka ngoprek</b>
+                <span>Build rapi sebagai data yang bisa dibandingkan dengan mobil yang sama.</span>
+              </div>
+            </li>
+            <li>
+              <span class="who-icon"><Icon name="history" size={20} /></span>
+              <div>
+                <b>Mau jual nanti</b>
+                <span>Riwayat jelas jadi bukti rawatan yang menjaga nilai jual mobilmu.</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Free forever -->
+      <section class="free reveal">
+        <div class="container">
+          <div class="free-box">
+            <div class="free-main">
+              <div class="am-spec free-badge">Gratis selamanya</div>
+              <h2 class="sec-title">Ikut komunitas nggak pernah dipungut bayaran.</h2>
+              <p>
+                Bagikan build, lapor masalah, jawab pertanyaan, catat riwayat servis. Gratis di
+                semua tier, sekarang dan nanti.
+              </p>
+            </div>
+            <p class="free-note">
+              Yang berbayar nanti cuma kedalaman AI dan alat pribadi. Bukan hak untuk bersuara.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section class="faq reveal">
+        <div class="container faq-grid">
+          <div class="faq-lead">
+            <div class="am-label kicker">Tanya jawab</div>
+            <h2 class="sec-title">Yang sering ditanya.</h2>
+          </div>
+          <div class="faq-list">
+            {
+              faq.map((f) => (
+                <details>
+                  <summary>{f.q}</summary>
+                  <p>{f.a}</p>
+                </details>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- Be first -->
+      <section class="first">
+        <div class="container">
+          <CtaBand
+            heading="Jadi yang pertama."
+            body="Aplikasinya masih dibangun — dan kami tidak pura-pura sebaliknya. Daftar waitlist, kami kabari sekali begitu pendaftaran dibuka."
+          />
+        </div>
+      </section>
+</Shell>
 
 <style>
-  main {
-    display: grid;
-    place-items: center;
-    min-height: 100dvh;
-    padding: var(--space-6) var(--page-padding);
+  .container {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 28px);
   }
 
-  .shell {
+  /* Hero — a full-bleed atmospheric photograph with the copy set over the
+     dark left side. The image carries the brand's philosophy (a car at rest
+     in its garage, an orange line tracing the road it has travelled); the
+     headline does the talking. */
+  .hero {
+    position: relative;
     display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    max-width: 34rem;
+    align-items: center;
+    min-height: min(90vh, 760px);
+    overflow: hidden;
+    isolation: isolate;
   }
-
-  .mark {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+  .hero-img {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 72% center;
+  }
+  /* Left-to-right dark scrim so the headline reads over the negative space,
+     plus a bottom fade that dissolves the photo into the page below. */
+  .hero-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+      linear-gradient(
+        90deg,
+        var(--color-background) 0%,
+        rgba(14, 18, 23, 0.86) 34%,
+        rgba(14, 18, 23, 0.4) 62%,
+        rgba(14, 18, 23, 0.08) 100%
+      ),
+      linear-gradient(0deg, var(--color-background) 2%, transparent 46%);
+  }
+  .hero-inner {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    padding-top: clamp(72px, 12vh, 128px);
+    padding-bottom: clamp(56px, 10vh, 96px);
+  }
+  .hero-copy {
+    max-width: 600px;
+  }
+  h1 {
+    font: var(--type-hero);
+    font-size: clamp(34px, 6vw, 56px);
+    line-height: 1.13;
+    letter-spacing: -0.015em;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .lede {
+    font: var(--type-body);
+    font-size: clamp(16px, 2vw, 18px);
+    line-height: 1.6;
     color: var(--color-text-secondary);
+    margin: 18px 0 0;
+    max-width: 540px;
+  }
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-top: 28px;
+  }
+  .hero-note {
+    font: 400 13px/19px var(--font-sans);
+    color: var(--color-text-tertiary);
+    margin: 16px 0 0;
   }
 
-  .dot {
+  /* Phones show a car-heavy crop, so the scrim goes vertical — dark at the top
+     for the copy, dark at the bottom for the transition into the page. */
+  @media (max-width: 720px) {
+    .hero {
+      min-height: min(88vh, 660px);
+    }
+    .hero-img {
+      object-position: 64% 32%;
+    }
+    .hero-scrim {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(14, 18, 23, 0.82) 0%,
+          rgba(14, 18, 23, 0.52) 42%,
+          rgba(14, 18, 23, 0.74) 100%
+        ),
+        linear-gradient(0deg, var(--color-background) 2%, transparent 42%);
+    }
+    .hero-inner {
+      display: flex;
+      align-items: flex-start;
+    }
+  }
+
+  /* Why */
+  .why {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(48px, 7vw, 76px) 0;
+  }
+  .why-kicker {
+    color: var(--color-text-tertiary);
+  }
+  .why-title {
+    font: var(--type-h2);
+    font-size: clamp(26px, 4vw, 36px);
+    line-height: 1.22;
+    color: var(--color-text-primary);
+    margin: 10px 0 0;
+    max-width: 640px;
+  }
+  .why-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: stretch;
+    margin-top: 30px;
+  }
+  .why-card {
+    flex: 1 1 280px;
+    min-width: min(100%, 260px);
+    display: block;
+    text-decoration: none;
+    color: inherit;
+  }
+  .why-card.wide {
+    flex: 1.6 1 400px;
+    min-width: min(100%, 300px);
+  }
+  .why-card h3 {
+    font: 650 clamp(20px, 2.4vw, 23px) / 1.3 var(--font-sans);
+    color: var(--color-text-primary);
+    margin: 14px 0 0;
+  }
+  .why-card p {
+    font: 400 15px/23px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 8px 0 0;
+    max-width: 520px;
+  }
+  /* Pushes the trailing block to the bottom of the flex-column card. */
+  .card-fill {
+    margin-top: auto;
+    padding-top: 20px;
+  }
+  .build-spec {
+    font-size: clamp(19px, 2.4vw, 22px);
+    line-height: 1.5;
+    font-weight: 650;
+    color: var(--color-text-primary);
+  }
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-cta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    font: 600 14px/1 var(--font-sans);
     color: var(--accent-500);
   }
 
-  h1 {
-    font-size: clamp(2rem, 7vw, 3.25rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
+  /* Be first */
+  .first {
+    padding: clamp(24px, 4vw, 40px) 0 clamp(56px, 8vw, 88px);
   }
 
-  .lede {
-    font-size: clamp(1rem, 3.4vw, 1.125rem);
-    color: var(--color-text-secondary);
-  }
-
-  .note {
-    font-size: 0.875rem;
+  /* Shared bits for the added sections */
+  .kicker {
     color: var(--color-text-tertiary);
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-4);
   }
+  .sec-title {
+    font: var(--type-h2);
+    font-size: clamp(24px, 3.6vw, 34px);
+    line-height: 1.22;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  /* Problem — editorial statement + a short "what gets lost" list */
+  .problem {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(48px, 7vw, 80px) 0;
+  }
+  .problem-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(28px, 5vw, 56px);
+    align-items: center;
+  }
+  .problem-lead {
+    flex: 1 1 440px;
+    min-width: min(100%, 320px);
+  }
+  .problem-lead h2 {
+    font: var(--type-h2);
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.18;
+    color: var(--color-text-primary);
+    margin: 0;
+    max-width: 15ch;
+  }
+  .problem-lead p {
+    font: 400 16px/25px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 16px 0 0;
+    max-width: 52ch;
+  }
+  .lost {
+    flex: 1 1 320px;
+    min-width: min(100%, 280px);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .lost li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    column-gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .lost li:first-child {
+    border-top: 1px solid var(--color-border);
+  }
+  .lost-x {
+    width: 14px;
+    height: 14px;
+    position: relative;
+    align-self: center;
+  }
+  .lost-x::before,
+  .lost-x::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 14px;
+    height: 1.5px;
+    background: var(--color-text-tertiary);
+  }
+  .lost-x::before {
+    transform: rotate(45deg);
+  }
+  .lost-x::after {
+    transform: rotate(-45deg);
+  }
+  .lost-t {
+    font: 600 15px/1.3 var(--font-sans);
+    color: var(--color-text-primary);
+  }
+  .lost-s {
+    grid-column: 2;
+    font: 400 13px/18px var(--font-sans);
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+  }
+
+  /* How — a real 3-step sequence, numbered */
+  .how {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(48px, 7vw, 80px) 0;
+  }
+  .how .sec-title {
+    margin-top: 10px;
+    max-width: 18ch;
+  }
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 32px 0 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(20px, 4vw, 40px);
+  }
+  .step {
+    border-top: 2px solid var(--color-border-strong);
+    padding-top: 18px;
+  }
+  .step-n {
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: var(--accent-500);
+  }
+  .step h3 {
+    font: 650 clamp(18px, 2.2vw, 21px) / 1.3 var(--font-sans);
+    color: var(--color-text-primary);
+    margin: 12px 0 0;
+  }
+  .step p {
+    font: 400 14px/22px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 8px 0 0;
+  }
+  @media (max-width: 720px) {
+    .steps {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    .step {
+      border-top: none;
+      border-left: 2px solid var(--color-border-strong);
+      padding: 4px 0 22px 18px;
+    }
+    .step:last-child {
+      padding-bottom: 0;
+    }
+  }
+
+  /* Who — lead + a divided list, not another card grid */
+  .who {
+    background: var(--color-surface-subtle);
+    border-top: 1px solid var(--color-border);
+    padding: clamp(48px, 7vw, 80px) 0;
+  }
+  .who-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(28px, 5vw, 64px);
+    align-items: flex-start;
+  }
+  .who-lead {
+    flex: 1 1 300px;
+    min-width: min(100%, 280px);
+  }
+  .who-sub {
+    font: 400 15px/23px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 12px 0 0;
+  }
+  .who-list {
+    flex: 1.4 1 400px;
+    min-width: min(100%, 300px);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .who-list li {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .who-list li:first-child {
+    padding-top: 0;
+  }
+  .who-list li:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .who-icon {
+    color: var(--accent-500);
+    flex: none;
+    display: inline-flex;
+    margin-top: 2px;
+  }
+  .who-list b {
+    display: block;
+    font: 650 16px/1.3 var(--font-sans);
+    color: var(--color-text-primary);
+  }
+  .who-list span {
+    display: block;
+    font: 400 14px/21px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+    max-width: 52ch;
+  }
+
+  /* Free — an accent-tinted callout, distinct from the graphite CTA band */
+  .free {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(40px, 6vw, 68px) 0;
+  }
+  .free-box {
+    border: 1px solid color-mix(in srgb, var(--accent-500) 32%, var(--color-border));
+    background: color-mix(in srgb, var(--accent-500) 6%, transparent);
+    border-radius: var(--radius-xl);
+    padding: clamp(24px, 4vw, 40px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px clamp(28px, 5vw, 56px);
+    align-items: center;
+    justify-content: space-between;
+  }
+  .free-main {
+    flex: 1 1 420px;
+    min-width: min(100%, 300px);
+  }
+  .free-badge {
+    display: inline-block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-600);
+  }
+  .free-main .sec-title {
+    margin: 10px 0 0;
+    max-width: 22ch;
+  }
+  .free-main p {
+    font: 400 15px/23px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 10px 0 0;
+    max-width: 60ch;
+  }
+  .free-note {
+    flex: 1 1 220px;
+    min-width: min(100%, 220px);
+    max-width: 280px;
+    font: 600 14px/21px var(--font-sans);
+    color: var(--color-text-primary);
+    padding-left: clamp(0px, 2vw, 24px);
+    border-left: 1px solid color-mix(in srgb, var(--accent-500) 32%, var(--color-border));
+  }
+  @media (max-width: 720px) {
+    .free-note {
+      border-left: none;
+      padding-left: 0;
+      padding-top: 16px;
+      border-top: 1px solid color-mix(in srgb, var(--accent-500) 32%, var(--color-border));
+    }
+  }
+
+  /* FAQ — native <details>, zero JavaScript */
+  .faq {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(48px, 7vw, 80px) 0;
+  }
+  .faq-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(28px, 5vw, 64px);
+    align-items: flex-start;
+  }
+  .faq-lead {
+    flex: 1 1 260px;
+    min-width: min(100%, 240px);
+    max-width: 320px;
+  }
+  .faq-lead .sec-title {
+    margin-top: 10px;
+  }
+  .faq-list {
+    flex: 1.6 1 420px;
+    min-width: min(100%, 300px);
+  }
+  .faq details {
+    border-bottom: 1px solid var(--color-border);
+  }
+  .faq details:first-child {
+    border-top: 1px solid var(--color-border);
+  }
+  .faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 0;
+    min-height: 44px;
+    font: 600 16px/1.4 var(--font-sans);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    list-style: none;
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  /* CSS chevron, rotates when the item opens */
+  .faq summary::after {
+    content: "";
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-right: 2px solid var(--color-text-tertiary);
+    border-bottom: 2px solid var(--color-text-tertiary);
+    transform: rotate(45deg);
+    transition: transform var(--duration-micro) var(--ease-out);
+  }
+  .faq details[open] summary::after {
+    transform: rotate(-135deg);
+  }
+  .faq details p {
+    font: 400 14px/22px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 0;
+    padding: 0 0 18px;
+    max-width: 62ch;
+  }
+
 </style>

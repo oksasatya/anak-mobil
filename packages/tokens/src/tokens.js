@@ -142,6 +142,59 @@ export const typography = {
   numericFeature: '"tnum" 1, "lnum" 1',
 };
 
+/**
+ * Composite type tokens — the `font` shorthand minus the family, which the
+ * generator appends as `var(--font-sans)`. Used as `font: var(--type-hero);`.
+ *
+ * Two scales, per docs/design.md §11–12. Weights 650 and 750 are why the
+ * font must be the variable cut — no static Inter provides them.
+ */
+export const type = {
+  hero: "750 56px/64px",
+  h1: "700 44px/52px",
+  h2: "700 36px/44px",
+  h3: "650 28px/36px",
+  title: "650 20px/28px",
+  body: "400 16px/25px",
+  small: "400 14px/21px",
+};
+
+/** Mobile type scale — docs/design.md §12. Emitted as `--type-m-*`. */
+export const typeMobile = {
+  display: "700 32px/38px",
+  h1: "700 28px/34px",
+  h2: "700 24px/30px",
+  h3: "650 20px/26px",
+  title: "650 18px/24px",
+  "body-lg": "400 16px/24px",
+  body: "400 14px/21px",
+  label: "600 13px/18px",
+  caption: "400 12px/17px",
+  micro: "500 11px/14px",
+};
+
+/**
+ * Elevation — borders before shadows (docs/design.md §15). Default surfaces
+ * carry a 1px border and no shadow; `soft` is reserved for genuinely floating
+ * things (a dropdown, a bottom sheet, a floating waitlist card) and is
+ * theme-dependent — heavier in dark so it reads on a near-black ground.
+ */
+export const elevation = {
+  none: "none",
+  soft: {
+    light: "0 8px 24px rgba(15,20,26,0.10)",
+    dark: "0 12px 32px rgba(0,0,0,0.45)",
+  },
+};
+
+/** Motion — docs/design.md §50. Short and functional; no racing effects. */
+export const motion = {
+  durationMicro: "150ms",
+  durationStandard: "210ms",
+  durationSheet: "280ms",
+  easeOut: "cubic-bezier(0.2,0,0,1)",
+};
+
 /** Layout constants that are not spacing steps. */
 export const layout = {
   pagePaddingMobile: 16,
@@ -160,6 +213,10 @@ export const tokens = {
   spacing,
   radius,
   typography,
+  type,
+  typeMobile,
+  elevation,
+  motion,
   layout,
 };
 
