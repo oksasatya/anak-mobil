@@ -1,0 +1,116 @@
+---
+/**
+ * Kebijakan privasi — pre-launch waitlist only (AM-341).
+ *
+ * Plain, human-readable, and truthful to what the waitlist actually stores:
+ * an email and an optional one-line car description, used only to announce
+ * launch, never sold or shared. Matches the promise the footer and the Daftar
+ * form make.
+ */
+import Shell from "../layouts/Shell.astro";
+
+const title = "Privasi — AnakMobil.id";
+const description =
+  "Kebijakan privasi waitlist pra-rilis AnakMobil.id: apa yang disimpan (email + baris mobil opsional), untuk apa, dan cara menghapusnya.";
+
+const sections = [
+  {
+    h: "Yang kami simpan",
+    p: "Email kamu, dan — kalau kamu isi — satu baris tentang mobilmu. Itu saja. Tidak ada tracking pixel, tidak ada profil iklan.",
+  },
+  {
+    h: "Untuk apa",
+    p: "Satu hal: mengabari kamu waktu pendaftaran AnakMobil dibuka. Baris mobil dipakai supaya kabar itu relevan buat mobilmu.",
+  },
+  {
+    h: "Yang tidak kami lakukan",
+    p: "Tidak dijual, tidak dibagikan ke pihak lain, tidak dipakai untuk newsletter yang tidak kamu minta.",
+  },
+];
+---
+
+<Shell title={title} description={description} path="/privasi" active="none">
+  <section class="wrap reveal">
+    <div class="head-top">
+      <span class="jalur" aria-hidden="true"></span>
+      <span class="am-label kicker">Privasi</span>
+    </div>
+    <h1>Kebijakan privasi yang bisa dibaca manusia.</h1>
+    <p class="meta">Berlaku untuk waitlist pra-rilis anakmobil.id · Agustus 2026</p>
+
+    <div class="body">
+      {
+        sections.map((s) => (
+          <div class="item">
+            <h2>{s.h}</h2>
+            <p>{s.p}</p>
+          </div>
+        ))
+      }
+      <div class="item">
+        <h2>Hapus kapan saja</h2>
+        <p>
+          Kirim email ke <a href="mailto:halo@anakmobil.id">halo@anakmobil.id</a> dari alamat yang
+          terdaftar — kami hapus, selesai.
+        </p>
+      </div>
+    </div>
+  </section>
+</Shell>
+
+<style>
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: clamp(44px, 7vw, 72px) clamp(16px, 4vw, 28px) clamp(56px, 8vw, 80px);
+  }
+  .head-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .jalur {
+    width: 40px;
+    height: 3px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-500);
+    flex: none;
+  }
+  .kicker {
+    color: var(--color-text-tertiary);
+  }
+  h1 {
+    font: var(--type-h1);
+    font-size: clamp(28px, 4.6vw, 40px);
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+    margin: 10px 0 0;
+  }
+  .meta {
+    font: 400 14px/21px var(--font-sans);
+    color: var(--color-text-tertiary);
+    margin: 12px 0 0;
+  }
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+    margin-top: 34px;
+  }
+  .item h2 {
+    font: 650 18px/24px var(--font-sans);
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .item p {
+    font: 400 15px/24px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 8px 0 0;
+  }
+  .item a {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+</style>
