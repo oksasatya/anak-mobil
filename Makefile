@@ -19,7 +19,7 @@ p ?= ios
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check \
-        mb-check mb-run-dev mb-run-preview mb-run-prod check
+        mb-check mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
 
 # Load .env and hand every value to the recipes below.
 #
@@ -122,9 +122,6 @@ db-psql: ## Open a psql shell on the development database
 # the comment onto the next line — silently swallowing the command that
 # follows it. That is not hypothetical; it is how the first version of this
 # target ran nothing at all while reporting success.
-#
-# When apps/mobile is scaffolded, add one more line to the group:
-#   ( bun run --filter @anakmobil/mobile start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) &
 dev: db-up ds-build ## Run every surface that exists — API, landing, and Metro
 	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
 	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
@@ -227,7 +224,7 @@ fe-build: ds-build ## Build the landing site
 fe-preview: ## Serve the built landing site (what Lighthouse must measure)
 	bun run --filter $(LANDING) preview
 
-fe-check: ds-check ## Type-check and build the landing site
+fe-check: ds-check fmt-check ## Type-check, format-check, and build the landing site
 	bun run --filter $(LANDING) gate
 	@echo "landing gate green"
 
@@ -247,7 +244,7 @@ fe-check: ds-check ## Type-check and build the landing site
 # mb-run-* build to a real device and need the owner's Xcode/Android Studio; they
 # cannot run in CI, which only runs mb-check.
 
-mb-check: ## Type-check and lint the mobile app (typed routes generated first)
+mb-check: fmt-check ## Format-check, type-check, and lint the mobile app
 	bun run --filter $(MOBILE) check
 	@echo "mobile gate green"
 
@@ -263,4 +260,20 @@ mb-run-prod: ## Build+run the production variant on a device (p=ios|android)
 	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; set +a; \
 		cd $(MOBILE_DIR) && APP_VARIANT=production bunx expo run:$(p)
 
-check: be-check fe-check mb-check ## Every gate in the repository
+# --- Formatting ---------------------------------------------------------------
+#
+# Prettier owns every JavaScript, TypeScript, Astro, CSS, and JSON file in the
+# repository. Rust is NOT included — `cargo fmt` (be-fmt) owns apps/api, and
+# Markdown is excluded because the specs and READMEs are wrapped by hand.
+#
+# Each surface gate (fe-check, ds-check, mb-check) already verifies its own
+# formatting, so a surface stays self-contained; fmt-check covers what sits
+# outside a workspace, such as the workflow files.
+
+fmt: ## Format every JS/TS/Astro/CSS/JSON file
+	bun run format
+
+fmt-check: ## Fail if anything is unformatted (what the aggregate runs)
+	bun run format:check
+
+check: be-check fe-check mb-check fmt-check ## Every gate in the repository

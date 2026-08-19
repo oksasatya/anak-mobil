@@ -33,6 +33,11 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # Formatting is repo-wide and runs from the root, where .prettierignore
+      # applies. Prettier owns JS/TS/Astro/CSS/JSON; cargo fmt owns apps/api.
+      - name: Format check
+        run: bun run format:check
+
       # Identical to `make mb-check`: generate typed routes -> tsc --noEmit ->
       # expo lint. No native build and no EAS build here; CI proves the code is
       # type-clean and lint-clean only. The native build is local (expo run:*)
