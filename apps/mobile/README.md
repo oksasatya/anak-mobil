@@ -34,13 +34,13 @@ make mb-reverse               # bridge localhost:8080 into an attached Android d
 So the daily loop is the repo-wide dev command, which starts the API, the landing site, and Metro together:
 
 ```bash
-make dev              # API + landing + Metro
-make dev m=ios        # …and opens the app on the iOS simulator
-make dev m=android    # …and on an Android emulator
-make dev m=both       # …and on both
+make dev              # API + landing + Metro + the app on the iOS simulator
+make dev m=none       # …without opening the app, for landing-only work
 ```
 
-`m=` opens an **already-installed** dev client; it never builds one. Run `make mb-run-dev` once first, or the app it tries to open is not there yet — `make dev` says so rather than failing silently. Opening is opt-in because `make dev` has to stay usable on a machine with no simulator at all: someone editing the landing page needs neither Xcode nor an emulator.
+**iOS is what `make dev` opens; Android is a manual path.** Android still has to work — AM-24 asks for the app running on a physical device of each platform — but booting an emulator on every `make dev` costs more than it returns when the day's work is iOS. To run Android: `make mb-run-dev p=android`, start the device, then `make mb-reverse`.
+
+`make dev` opens an **already-installed** dev client and never builds one. Run `make mb-run-dev p=ios` once first, or there is nothing to open — the command says so rather than failing silently.
 
 Metro's interactive keys (`i`, `a`, `r`) do **not** work under `make dev` — its output is piped through `awk` for the log prefix, which costs the TTY. That is exactly why `m=` exists: the platform is chosen at startup instead of by keypress. For the interactive Metro, run it alone:
 
@@ -72,7 +72,7 @@ flowchart LR
   | Android phone over USB | Only with `adb reverse` — same reason |
   | **Physical iPhone** | **No.** There is no adb; point the URL at the Mac's LAN IP |
 
-  `make dev m=android|both` runs the bridge when a device is already attached; when Expo boots the emulator itself, run `make mb-reverse` once it is up. Re-apply it after a reconnect or an emulator restart. For a physical iPhone, set `EXPO_PUBLIC_API_URL` to `http://<lan-ip>:8080` (`ipconfig getifaddr en0`) — the API binds `0.0.0.0:8080`, so it is reachable.
+  Run `make mb-reverse` once the Android device or emulator is up, and again after any reconnect or emulator restart. For a physical iPhone, set `EXPO_PUBLIC_API_URL` to `http://<lan-ip>:8080` (`ipconfig getifaddr en0`) — the API binds `0.0.0.0:8080`, so it is reachable.
 - The `mb-run-<variant>` targets set `APP_VARIANT` and source the matching env file so the right URL is inlined; the healthcheck screen (`src/app/index.tsx`) prints the resolved profile and URL so a wrong one is obvious on first launch.
 
 ## Structure

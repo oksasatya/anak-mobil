@@ -16,25 +16,25 @@ MOBILE_DIR := apps/mobile
 # Which platform the mb-run-* device builds target. `p=android` overrides.
 p ?= ios
 
-# `make dev m=ios|android|both` also opens the app on a simulator/emulator.
+# `make dev` opens the app on the iOS simulator; `make dev m=none` skips it.
 #
-# Opening is NOT the default, and that is deliberate: `make dev` is meant to be
-# the five-second "start the servers" command, and it must work on a machine
-# with no simulator booted at all — someone editing the landing page needs
-# neither Xcode nor an emulator. Opening a device is opt-in.
+# iOS only, deliberately. Android is still built and still has to work — AM-24
+# asks for the app running on a physical device of each platform — but it is a
+# manual path (`mb-run-dev p=android`, then `mb-reverse`), not part of the daily
+# loop. Booting an emulator on every `make dev` costs more than it returns when
+# the day's work is iOS.
 #
-# This opens an ALREADY-INSTALLED dev client; it does not build one. The native
-# build is `make mb-run-dev p=ios|android`, which takes minutes and only has to
-# be re-run when native dependencies change.
-m ?= none
-ifeq ($(m),ios)
-DEV_OPEN := --ios
-else ifeq ($(m),android)
-DEV_OPEN := --android
-else ifeq ($(m),both)
-DEV_OPEN := --ios --android
-else
+# `m=none` exists for the case this would otherwise punish: editing the landing
+# page on a machine where no simulator needs to run at all.
+#
+# Either way this opens an ALREADY-INSTALLED dev client and never builds one.
+# The native build is `make mb-run-dev`, minutes long, and only repeats when a
+# native dependency changes.
+m ?= ios
+ifeq ($(m),none)
 DEV_OPEN :=
+else
+DEV_OPEN := --ios
 endif
 
 .DEFAULT_GOAL := help
@@ -143,23 +143,15 @@ db-psql: ## Open a psql shell on the development database
 # the comment onto the next line — silently swallowing the command that
 # follows it. That is not hypothetical; it is how the first version of this
 # target ran nothing at all while reporting success.
-dev: db-up ds-build ## Run every surface — API, landing, Metro (m=ios|android|both opens the app)
+dev: db-up ds-build ## Run every surface — API, landing, Metro, and the iOS app (m=none skips the app)
 	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
 	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
 	@echo 'metro    \033[36mhttp://localhost:8081\033[0m'
-	@if [ -n '$(DEV_OPEN)' ]; then echo 'opening  \033[36m$(m)\033[0m'; else echo 'mobile   \033[36mMetro only — `make dev m=both` also opens the app\033[0m'; fi
+	@if [ -n '$(DEV_OPEN)' ]; then echo 'app      \033[36miOS simulator\033[0m'; else echo 'app      \033[36mnot opened (m=none) — Metro only\033[0m'; fi
 	@echo 'ctrl-c stops all'
 	@echo
-	@case '$(m)' in ios|both) [ -d $(MOBILE_DIR)/ios ] || echo '\033[33mnote:\033[0m no iOS dev client yet — run `make mb-run-dev p=ios` once, then this opens it';; esac
+	@if [ -n '$(DEV_OPEN)' ] && [ ! -d $(MOBILE_DIR)/ios ]; then echo '\033[33mnote:\033[0m no iOS dev client yet — run `make mb-run-dev p=ios` once, then this opens it'; fi
 	@case '$(m)' in android|both) [ -d $(MOBILE_DIR)/android ] || echo '\033[33mnote:\033[0m no Android dev client yet — run `make mb-run-dev p=android` once, then this opens it';; esac
-	@case '$(m)' in android|both) \
-		if ! command -v adb >/dev/null; then \
-			echo '\033[33mnote:\033[0m adb is not on PATH — export PATH="$$PATH:$$HOME/Library/Android/sdk/platform-tools"'; \
-		elif [ -z "$$(adb devices | sed 1d | grep .)" ]; then \
-			echo '\033[33mnote:\033[0m no Android device attached; Expo will boot an emulator — then run `make mb-reverse` so localhost:8080 reaches the API'; \
-		else \
-			$(MAKE) --no-print-directory mb-reverse; \
-		fi;; esac
 	@set -m; \
 		trap 'kill -- -$$api -$$landing -$$mobile 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 -ti tcp:8081 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
 		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
@@ -287,6 +279,8 @@ mb-check: fmt-check ## Format-check, type-check, and lint the mobile app
 # alike. Expo already reverses Metro's own 8081; the API port is ours to add.
 #
 # It has to be re-applied whenever the device reconnects or the emulator restarts.
+# `make dev` no longer calls this: it opens iOS only, and Android is the manual
+# path — `make mb-run-dev p=android`, start the device, then this.
 mb-reverse: ## Bridge the API port into an attached Android device (localhost:8080)
 	@adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 \
 		&& echo 'adb reverse tcp:8080 -> host (localhost:8080 now reaches the API)' \
