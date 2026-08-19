@@ -319,7 +319,7 @@ Target visual:
 
 --text-primary:      #171C22;
 --text-secondary:    #5D6670;
---text-tertiary:     #8A939D;
+--text-tertiary:     #616A74;
 
 --border:            #E3E6E9;
 --border-strong:     #CDD2D7;
@@ -335,10 +335,17 @@ Target visual:
 
 --text-dark-primary:    #F5F7F8;
 --text-dark-secondary:  #AAB2BA;
---text-dark-tertiary:   #737D87;
+--text-dark-tertiary:   #8E98A2;
 
 --border-dark:          #29313A;
 ```
+
+`--text-tertiary` and `--text-dark-tertiary` were repaired 2026-08-19 (AM-15): the
+previous values failed WCAG AA — 3.12:1 on `--surface` and 2.80:1 on
+`--surface-subtle` (light, below even the 3:1 large-text floor), 4.18:1 on
+`--surface-dark` and 3.87:1 on `--surface-dark-raised` (dark). The repaired values
+reach 5.49:1 / 4.94:1 (light) and 5.97:1 / 5.53:1 (dark) on the same pairs.
+`packages/tokens/src/tokens.js` is the source of truth; these match it.
 
 ---
 
@@ -353,6 +360,11 @@ Brand orange tidak boleh digunakan untuk semua status.
 --info:    #2678D9;
 ```
 
+These four values are **fills, borders, and icons only — never text.** As text on
+their own theme's surface they fail AA: success is 3.99:1 on the dark surface, warning
+is 2.81:1 on white, danger is 3.79:1 on dark, info is 3.97:1 on dark. Where a status
+needs a label, use Semantic Text below.
+
 Usage:
 
 | State | Color |
@@ -362,6 +374,23 @@ Usage:
 | Not Compatible | Danger |
 | Informational | Info |
 | Brand / CTA | AnakMobil Orange |
+
+## Semantic Text
+
+A separate pair per theme, for when a status carries words rather than a fill, border,
+or icon. A component that needs both uses `semantic` above for the border/icon and
+one of these for the label — which also satisfies §61's "do not communicate status by
+colour alone" for free.
+
+| Role | Light | Ratio (white / surface-subtle) | Dark | Ratio (surface / surface-subtle) |
+|---|---|---|---|---|
+| Success | `#137747` | 5.59 / 5.02 | `#1FA463` | 5.45 / 4.70 |
+| Warning | `#8F5C00` | 5.68 / 5.10 | `#D58A00` | 6.22 / 5.35 |
+| Danger | `#C22C2C` | 5.69 / 5.12 | `#EC6363` | 5.44 / 4.68 |
+| Info | `#1F63B5` | 5.98 / 5.38 | `#4A93E8` | 5.52 / 4.75 |
+
+Not emitted to CSS — mobile-only, per `packages/tokens/src/tokens.js`'s `semanticText`
+group.
 
 ---
 
@@ -379,6 +408,11 @@ Safety Warning    → Danger
 ```
 
 Jangan menggunakan warna hijau untuk hasil AI yang belum benar-benar verified.
+
+Label colours use `semanticText` (§8), never the `semantic` fill/border/icon values
+directly — the latter fail AA as text. Per §61, a confidence badge is always solid
+(`working` role, §77) and carries a label and a shape as well as a colour; colour
+alone is never the signal.
 
 ---
 
@@ -436,6 +470,10 @@ Label        13 / 18 / 600
 Caption      12 / 17 / 400
 Micro        11 / 14 / 500
 ```
+
+In the app, the 650 weight above renders at **600**: React Native's `fontWeight` has no
+650 and the shipped Inter cuts are static. The desktop scale below keeps 650 and 750,
+where the web loads the variable cut.
 
 ## Desktop Web
 
@@ -566,9 +604,12 @@ Do not make every component pill-shaped.
 
 ---
 
-# 15. Elevation
+# 15. Elevation & Material
 
-Use borders before shadows.
+Use borders before shadows. **On mobile this is superseded for the `chrome` and
+`surface` glass roles, and survives intact for `working`** (§77 Material System): a
+translucent surface gets its form from its edge, not from a border, while a solid
+data surface needs no edge at all.
 
 ## Card Default
 
@@ -592,7 +633,8 @@ Avoid:
 
 - black heavy shadow
 - neumorphism
-- glossy dashboard UI
+- glossy dashboard UI — a warning against **gloss** (shiny gradient chrome, specular
+  sweeps), not against the glass material defined in §77
 
 ---
 
@@ -1298,6 +1340,18 @@ Do not increase saturation excessively in dark mode.
 
 Automotive photography looks particularly strong on dark mode.
 
+## Glass Recipe
+
+Three roles, distinguished by coverage, not blur radius (§77 Material System):
+
+```text
+chrome:   tint #0E1217 at 80%  ->  composite #0E1217
+surface:  tint #151A20 at 92%  ->  composite #14191F
+working:  #151A20, solid, zero transparency
+```
+
+The composited colour is the contract, not the tint or the coverage percentage.
+
 ---
 
 # 41. Light Mode
@@ -1323,6 +1377,20 @@ Cards:
 
 Avoid pure-white-everywhere appearance.
 
+## Glass Recipe
+
+```text
+chrome:   tint #FBFCFD at 80%  ->  composite #FAFBFC
+surface:  tint #FCFDFD at 92%  ->  composite #FCFDFD
+working:  #FFFFFF, solid, zero transparency
+```
+
+`surface` tints off-white (`#FCFDFD`) rather than the subtle grey (`#F1F3F5`) used
+elsewhere in this document: at 92% coverage that grey gives secondary text only
+4.40:1 over a dark backdrop — a fail. What keeps "avoid pure-white-everywhere" true
+without breaking the contrast contract is that **the edge, not the fill, is what
+separates a surface from the page** (§77) — the composite stays near-white on purpose.
+
 ---
 
 # 42. Buttons
@@ -1340,8 +1408,11 @@ For strongest brand CTA:
 
 ```text
 Background: #ED491C
-Text: #FFFFFF
+Text: #0F141A
 ```
+
+White on `#ED491C` is 3.77:1 and fails AA; graphite-950 (`#0F141A`) reaches 4.91:1.
+The orange fill is unchanged — only the label colour repairs the contrast.
 
 Orange CTA should be used selectively.
 
@@ -1436,14 +1507,21 @@ Show
 
 # 46. Cards
 
-Default card:
+Default card is the `surface` glass role (§77 Material System). Border is superseded
+by the role's own edge treatment (§15):
 
 ```text
-Background: Surface
-Border: 1px solid
+Background: surface (glass role, composited ~88-92%)
+Edge: top highlight + bottom inset shadow — no border
 Radius: 16px
 Padding: 16px
 ```
+
+**Exception — `working` role, solid, zero transparency:** service history, fitment
+results, forms, AI evidence, AI warnings, confidence badges, and the eight §73
+signature components. These are read to make a decision, often outdoors, and a
+surface whose contrast varies with whatever is behind it is the wrong material for a
+service record.
 
 Card density should vary:
 
@@ -1477,6 +1555,13 @@ Community Avatar  1:1
 Part Image        1:1
 Event Hero       16:9
 ```
+
+The ground behind these photos (§77 Material System) is a **tint, not a filtered
+photo** — a blurred, scrimmed photo would violate both "preserve vehicle color" and
+"avoid excessive filters" above, and costs roughly 46 MiB per decoded 4000×3000
+image, approaching a gigabyte across twenty cached vehicles. The tint keeps what the
+photo contributes — this garage belongs to *this* car — without the cost or the
+filter.
 
 ---
 
@@ -1556,6 +1641,9 @@ Avoid:
 - racing animation
 - speedometer animation everywhere
 - constant glowing orange effects
+- glow on glass — no exception for the `chrome`/`surface` roles (§77); the ban above
+  already covers it, restated here because glass is where a "constant glow" is
+  easiest to reach for
 
 ---
 
@@ -1955,7 +2043,7 @@ Avoid:
 
   --am-text: #171C22;
   --am-text-secondary: #5D6670;
-  --am-text-tertiary: #8A939D;
+  --am-text-tertiary: #616A74;
 
   --am-border: #E3E6E9;
   --am-border-strong: #CDD2D7;
@@ -1973,6 +2061,22 @@ Avoid:
 }
 ```
 
+### Material — mobile only
+
+Not emitted by `packages/tokens`' CSS build (`scripts/build.mjs`) — `apps/mobile`
+reads these directly from `src/tokens.js`. Recorded here as reference (§77 Material
+System has the full matrix).
+
+```text
+chrome:   tint #FBFCFD, 80% coverage  ->  composite #FAFBFC
+surface:  tint #FCFDFD, 92% coverage  ->  composite #FCFDFD
+working:  #FFFFFF, solid
+
+edge highlight:    rgba(255, 255, 255, 0.90)
+edge inset shadow: inset 0 -8px 12px -8px rgba(15, 20, 26, 0.14)
+ground stops:      #FFFFFF @ 0, #F7F8FA @ 0.45, #EFF2F5 @ 1
+```
+
 ---
 
 # 67. Dark Theme Tokens — CSS Reference
@@ -1981,15 +2085,27 @@ Avoid:
 [data-theme="dark"] {
   --am-bg: #0E1217;
   --am-surface: #151A20;
-  --am-surface-subtle: #1B2128;
+  --am-surface-subtle: #202730;
 
   --am-text: #F5F7F8;
   --am-text-secondary: #AAB2BA;
-  --am-text-tertiary: #737D87;
+  --am-text-tertiary: #8E98A2;
 
   --am-border: #29313A;
-  --am-border-strong: #39434E;
+  --am-border-strong: #3A434E;
 }
+```
+
+### Material — mobile only
+
+```text
+chrome:   tint #0E1217, 80% coverage  ->  composite #0E1217
+surface:  tint #151A20, 92% coverage  ->  composite #14191F
+working:  #151A20, solid
+
+edge highlight:    rgba(255, 255, 255, 0.14)
+edge inset shadow: inset 0 -8px 12px -8px rgba(0, 0, 0, 0.45)
+ground stops:      #151B22 @ 0, #0E1217 @ 0.45, #0B0E12 @ 1
 ```
 
 ---
@@ -2140,6 +2256,16 @@ on every component.
 
 AI should appear when it actually helps a decision.
 
+### "Glassmorphism Tempelan"
+
+```text
+Four-sided white border on a glass surface
+Uniform transparency across chrome/surface/working roles
+Glass on warnings or data (AI safety warnings, confidence badges, service records)
+Blur treated as the identity, not the edge
+Decorative refraction blobs
+```
+
 ---
 
 # 73. Signature AnakMobil Components
@@ -2179,6 +2305,13 @@ Text:       #F5F7F8
 Accent:     #ED491C
 ```
 
+### Ground & Material
+
+```text
+Ground:   graphite gradient, optional vehicle-colour tint (§77)
+Material: chrome / surface / working, distinguished by coverage (§77)
+```
+
 ### Overall Ratio
 
 ```text
@@ -2186,6 +2319,9 @@ Neutral / Graphite : 85%
 Orange Accent      : 10%
 Semantic Colors    : 5%
 ```
+
+Scoped to **UI tokens** — imagery is excluded. A red or yellow car in a vehicle hero
+would otherwise make the ratio false on its own.
 
 ---
 
@@ -2250,6 +2386,8 @@ EVIDENCE-BASED AI
 **Preferred Theme:** Both light and dark; dark particularly important for automotive imagery  
 **AI Style:** Grounded, structured, evidence-first  
 **Social Style:** Vehicle-context-first, not feed-first  
+**Material (mobile):** Glass — three roles by coverage, never by blur; solid wherever
+a decision is made (§77)  
 
 ### Brand line
 
@@ -2258,3 +2396,117 @@ EVIDENCE-BASED AI
 ### Design line
 
 > **Your car is the interface.**
+
+---
+
+# 77. Material System
+
+Mobile only (`apps/mobile`). The single reference for the three roles, the contrast
+contract, the full matrix, the edge, the ground, and the platform ladder. Introduced
+by AM-15, 2026-08-19; every value here is `packages/tokens/src/tokens.js`, checked by
+`packages/tokens/test/material.test.mjs`.
+
+## Three roles
+
+One material, three roles, distinguished by how much of the surface its tint covers —
+never by blur radius.
+
+| Role | Where it lives | Text allowed |
+|---|---|---|
+| `chrome` | app bar, tab bar, floating AI entry — the most glass | primary only |
+| `surface` | content cards, sheets, list panels — high coverage, reads as workshop milk-glass | primary, secondary |
+| `working` | service history, fitment results, forms, AI evidence, AI warnings, confidence badges, the eight §73 signature components — **solid, zero transparency** | primary, secondary, tertiary |
+
+`working` is not a fallback or a degradation — it is the material for everything read
+to make a decision, often outdoors in direct Indonesian sun. A surface whose contrast
+varies with whatever is behind it is the wrong material for a service record.
+
+## The contrast contract
+
+**The binding token is the composited colour that passes WCAG AA — never an opacity
+value.** Percentages describe how a surface ends up looking; they are rendering
+inputs, not the contract. Two surfaces at the same coverage over different grounds
+are different colours, and only one may pass. Secondary and tertiary text may never
+sit on a material whose backdrop is unknown — they belong on `surface` (secondary
+only) or `working`. If a design ever needs a coverage that breaks the contract, the
+surface becomes solid; the contract wins, always.
+
+## The matrix
+
+`solid` is the composite over the app's own ground and is what renders whenever
+transparency is unavailable — every Android below SDK 31, and any device with Reduce
+Transparency on.
+
+| Role | tint | coverage | solid | overWhite | overBlack | text allowed |
+|---|---|---|---|---|---|---|
+| `dark.chrome` | `#0E1217` | 80% | `#0E1217` | `#3E4145` | `#0B0E12` | primary |
+| `dark.surface` | `#151A20` | 92% | `#14191F` | `#282C32` | `#13181D` | primary, secondary |
+| `dark.working` | `#151A20` | 100% | `#151A20` | — | — | primary, secondary, tertiary |
+| `light.chrome` | `#FBFCFD` | 80% | `#FAFBFC` | `#FCFDFD` | `#C9CACA` | primary |
+| `light.surface` | `#FCFDFD` | 92% | `#FCFDFD` | `#FCFDFD` | `#E8E9E9` | primary, secondary |
+| `light.working` | `#FFFFFF` | 100% | `#FFFFFF` | — | — | primary, secondary, tertiary |
+
+Every allowed pair, at every backdrop (`overWhite / overBlack / overGround`). **All
+pairs pass 4.5:1:**
+
+| Role | primary | secondary | tertiary |
+|---|---|---|---|
+| `dark.chrome` | 9.55 / 18.00 / 17.49 | not allowed | not allowed |
+| `dark.surface` | 13.06 / 16.62 / 16.44 | 6.54 / 8.32 / 8.23 | not allowed |
+| `dark.working` | 16.28 | 8.15 | 5.97 |
+| `light.chrome` | 16.81 / 10.43 / 16.54 | not allowed | not allowed |
+| `light.surface` | 16.81 / 14.09 / 16.81 | 5.72 / 4.80 / 5.72 | not allowed |
+| `light.working` | 17.13 | 5.83 | 5.49 |
+
+`light.surface` tints off-white (`#FCFDFD`) rather than the subtle grey used
+elsewhere in this document (`#F1F3F5`, §41): at 92% coverage that grey gives
+secondary text only 4.40:1 over a dark backdrop — a fail. The edge, not the fill, is
+what separates a light-mode surface from the page.
+
+## The edge
+
+Glass gets its form from its edge, not from being see-through: a 1px highlight on
+the **top edge only**, plus an inset shadow at the bottom for thickness — the
+instrument-panel read.
+
+```text
+Light: highlight rgba(255,255,255,0.90)  inset shadow 0 -8px 12px -8px rgba(15,20,26,0.14)
+Dark:  highlight rgba(255,255,255,0.14)  inset shadow 0 -8px 12px -8px rgba(0,0,0,0.45)
+```
+
+**Forbidden, by name: a uniform 1px white border on all four sides.** It is the
+single most recognisable signature of templated glassmorphism.
+
+## The ground
+
+A two-stop graphite gradient, tinted with the dominant colour of the active vehicle
+when there is one — pure code: no image asset, no blur, no photograph. The middle
+stop is the theme's own background, and it is the backdrop each role's `solid`
+composites over.
+
+```text
+Light stops: #FFFFFF @ 0, #F7F8FA @ 0.45, #EFF2F5 @ 1  (tint strength 0.08)
+Dark stops:  #151B22 @ 0, #0E1217 @ 0.45, #0B0E12 @ 1  (tint strength 0.14)
+```
+
+**Boundary:** `AmGround` accepts a tint it is given and falls back to neutral
+graphite when there is none. Where that tint comes from is not built here — colour
+extraction from a vehicle photo is deferred to the garage epic.
+
+## Platform ladder — written honestly
+
+Live blur is an enhancement, never the foundation. `expo-blur` on Android defaults to
+`blurMethod: 'none'`, which is a tint, not a blur; a real blur needs Android 12+.
+
+| Target | Rendering |
+|---|---|
+| iOS ≥ 26 | `expo-glass-effect` (`GlassView`), native Liquid Glass |
+| iOS < 26 | `expo-blur` over `UIVisualEffectView` — native and cheap |
+| Android ≥ 31 | `expo-blur` with `dimezisBlurViewSdk31Plus`, chrome only |
+| Android < 31 | tint + edge, no blur — and this must look correct, not broken |
+
+**This repository ships no blur library at all.** `chrome` has no consumer in AM-15
+— the app bar and tab bar belong to the app-shell story — so `expo-blur` would be a
+dependency bought for a surface that does not exist yet. Every role renders tint +
+edge today; the app-shell story adds `expo-blur` when it has a `chrome` surface to
+put it on.
