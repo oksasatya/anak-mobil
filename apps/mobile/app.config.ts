@@ -1,4 +1,4 @@
-import type { ExpoConfig } from 'expo/config';
+import type { ExpoConfig } from "expo/config";
 
 // APP_VARIANT selects the app identity (id, name). It is a plain build-time var,
 // never inlined into the bundle, set by `make mb-run-<variant>` and by each EAS
@@ -13,54 +13,54 @@ import type { ExpoConfig } from 'expo/config';
 // file here too would not change what babel inlines — it would only make
 // `expo config` report a value the bundle does not carry — so it is deliberately
 // not done. The authoritative per-profile path is `make mb-run-<variant>`.
-type Variant = 'development' | 'preview' | 'production';
-const VARIANT = (process.env.APP_VARIANT as Variant) ?? 'development';
+type Variant = "development" | "preview" | "production";
+const VARIANT = (process.env.APP_VARIANT as Variant) ?? "development";
 
 const APP_ID: Record<Variant, string> = {
-  development: 'id.anakmobil.app.dev',
-  preview: 'id.anakmobil.app.preview',
-  production: 'id.anakmobil.app',
+  development: "id.anakmobil.app.dev",
+  preview: "id.anakmobil.app.preview",
+  production: "id.anakmobil.app",
 };
 
 const APP_NAME: Record<Variant, string> = {
-  development: 'AnakMobil (Dev)',
-  preview: 'AnakMobil (Preview)',
-  production: 'AnakMobil',
+  development: "AnakMobil (Dev)",
+  preview: "AnakMobil (Preview)",
+  production: "AnakMobil",
 };
 
 const config: ExpoConfig = {
   name: APP_NAME[VARIANT],
-  slug: 'anakmobil',
-  scheme: 'anakmobil',
-  version: '0.1.0',
-  orientation: 'portrait',
-  icon: './assets/images/icon.png',
-  userInterfaceStyle: 'automatic',
+  slug: "anakmobil",
+  scheme: "anakmobil",
+  version: "0.1.0",
+  orientation: "portrait",
+  icon: "./assets/images/icon.png",
+  userInterfaceStyle: "automatic",
   ios: {
     bundleIdentifier: APP_ID[VARIANT],
-    icon: './assets/expo.icon',
+    icon: "./assets/expo.icon",
   },
   android: {
     package: APP_ID[VARIANT],
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
-      foregroundImage: './assets/images/android-icon-foreground.png',
-      backgroundImage: './assets/images/android-icon-background.png',
-      monochromeImage: './assets/images/android-icon-monochrome.png',
+      backgroundColor: "#E6F4FE",
+      foregroundImage: "./assets/images/android-icon-foreground.png",
+      backgroundImage: "./assets/images/android-icon-background.png",
+      monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     predictiveBackGestureEnabled: false,
   },
   web: {
-    output: 'static',
-    favicon: './assets/images/favicon.png',
+    output: "static",
+    favicon: "./assets/images/favicon.png",
   },
   plugins: [
-    'expo-router',
+    "expo-router",
     [
-      'expo-splash-screen',
+      "expo-splash-screen",
       {
-        backgroundColor: '#208AEF',
-        image: './assets/images/splash-icon.png',
+        backgroundColor: "#208AEF",
+        image: "./assets/images/splash-icon.png",
         imageWidth: 76,
       },
     ],
@@ -73,7 +73,7 @@ const config: ExpoConfig = {
     appVariant: VARIANT,
     // Written by `eas init` in Task 5. Until then no EAS command resolves,
     // which is fine — AC1 needs no EAS.
-    eas: { projectId: 'REPLACE_AFTER_EAS_INIT' },
+    eas: { projectId: "REPLACE_AFTER_EAS_INIT" },
   },
 };
 

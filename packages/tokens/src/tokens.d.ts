@@ -44,10 +44,9 @@ export interface ThemeColors {
 export declare const light: ThemeColors;
 export declare const dark: ThemeColors;
 
-export declare const spacing: Readonly<Record<
-  1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16 | 20 | 24,
-  number
->>;
+export declare const spacing: Readonly<
+  Record<1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16 | 20 | 24, number>
+>;
 
 export declare const radius: {
   readonly xs: number;
@@ -74,19 +73,12 @@ export declare const type: {
   readonly small: string;
 };
 
-export declare const typeMobile: Readonly<Record<
-  | "display"
-  | "h1"
-  | "h2"
-  | "h3"
-  | "title"
-  | "body-lg"
-  | "body"
-  | "label"
-  | "caption"
-  | "micro",
-  string
->>;
+export declare const typeMobile: Readonly<
+  Record<
+    "display" | "h1" | "h2" | "h3" | "title" | "body-lg" | "body" | "label" | "caption" | "micro",
+    string
+  >
+>;
 
 export declare const elevation: {
   readonly none: string;

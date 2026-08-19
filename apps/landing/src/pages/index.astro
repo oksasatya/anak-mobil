@@ -58,236 +58,238 @@ const faqSchema = {
 
 <Shell title={title} description={description} path="/" active="beranda" schema={[faqSchema]}>
   <!-- Hero -->
-      <section class="hero">
-        <img
-          class="hero-img"
-          src="/hero-1600.webp"
-          srcset="/hero-828.webp 828w, /hero-1280.webp 1280w, /hero-1600.webp 1600w"
-          sizes="100vw"
-          width="1672"
-          height="941"
-          alt=""
-          fetchpriority="high"
-          decoding="async"
-        />
-        <div class="hero-scrim"></div>
-        <div class="container hero-inner">
-          <div class="hero-copy">
-            <h1>Garasi digital buat mobil kamu.</h1>
-            <p class="lede">
-              Riwayat servis yang tidak hilang saat mobilnya dijual. Catatan build yang rapi. Dan
-              orang yang pernah pasang part yang sama di mobil yang sama.
-            </p>
-            <div class="cta-row">
-              <Button variant="brand" size="lg" href="/daftar">Daftar Waitlist</Button>
-              <Button variant="secondary" size="lg" href="/fitur">Lihat fitur</Button>
-            </div>
-            <p class="hero-note">
-              Masih dibangun. Daftar sekarang, jadi yang pertama tahu waktu pendaftaran dibuka.
-            </p>
-          </div>
+  <section class="hero">
+    <img
+      class="hero-img"
+      src="/hero-1600.webp"
+      srcset="/hero-828.webp 828w, /hero-1280.webp 1280w, /hero-1600.webp 1600w"
+      sizes="100vw"
+      width="1672"
+      height="941"
+      alt=""
+      fetchpriority="high"
+      decoding="async"
+    />
+    <div class="hero-scrim"></div>
+    <div class="container hero-inner">
+      <div class="hero-copy">
+        <h1>Garasi digital buat mobil kamu.</h1>
+        <p class="lede">
+          Riwayat servis yang tidak hilang saat mobilnya dijual. Catatan build yang rapi. Dan orang
+          yang pernah pasang part yang sama di mobil yang sama.
+        </p>
+        <div class="cta-row">
+          <Button variant="brand" size="lg" href="/daftar">Daftar Waitlist</Button>
+          <Button variant="secondary" size="lg" href="/fitur">Lihat fitur</Button>
         </div>
-      </section>
+        <p class="hero-note">
+          Masih dibangun. Daftar sekarang, jadi yang pertama tahu waktu pendaftaran dibuka.
+        </p>
+      </div>
+    </div>
+  </section>
 
-      <!-- The problem -->
-      <section class="problem reveal">
-        <div class="container problem-grid">
-          <div class="problem-lead">
-            <h2>Cerita mobil kamu gampang hilang.</h2>
+  <!-- The problem -->
+  <section class="problem reveal">
+    <div class="container problem-grid">
+      <div class="problem-lead">
+        <h2>Cerita mobil kamu gampang hilang.</h2>
+        <p>
+          Nota servis tercecer di laci. Spek build cuma ada di kepala dan grup chat. Begitu mobilnya
+          pindah tangan, semuanya ikut hilang: pembeli mulai dari nol, dan kerja rawatan kamu tidak
+          kelihatan di harga jual.
+        </p>
+      </div>
+      <ul class="lost">
+        <li>
+          <span class="lost-x"></span>
+          <span class="lost-t">Nota servis</span>
+          <span class="lost-s">tercecer, lama-lama hilang</span>
+        </li>
+        <li>
+          <span class="lost-x"></span>
+          <span class="lost-t">Spek build</span>
+          <span class="lost-s">cuma di ingatan, susah dibandingkan</span>
+        </li>
+        <li>
+          <span class="lost-x"></span>
+          <span class="lost-t">Bukti rawatan</span>
+          <span class="lost-s">tidak kebawa waktu mobil dijual</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Three capabilities -->
+  <section class="why reveal">
+    <div class="container">
+      <div class="am-label why-kicker">Kenapa AnakMobil</div>
+      <h2 class="why-title">Tiga hal yang beda di sini</h2>
+
+      <div class="why-grid">
+        <a class="why-card wide" href="/fitur#riwayat">
+          <Card padding="24px" interactive fill>
+            <Icon name="history" size={26} color="var(--accent-500)" />
+            <h3>Riwayat servis yang bertahan</h3>
             <p>
-              Nota servis tercecer di laci. Spek build cuma ada di kepala dan grup chat. Begitu
-              mobilnya pindah tangan, semuanya ikut hilang: pembeli mulai dari nol, dan kerja
-              rawatan kamu tidak kelihatan di harga jual.
+              Catat sekali — tanggal, KM, bengkel, biaya. Riwayatnya ikut mobil: pembeli berikutnya
+              lihat catatan yang jelas, nilai mobil kamu ikut kejaga.
             </p>
-          </div>
-          <ul class="lost">
-            <li>
-              <span class="lost-x"></span>
-              <span class="lost-t">Nota servis</span>
-              <span class="lost-s">tercecer, lama-lama hilang</span>
-            </li>
-            <li>
-              <span class="lost-x"></span>
-              <span class="lost-t">Spek build</span>
-              <span class="lost-s">cuma di ingatan, susah dibandingkan</span>
-            </li>
-            <li>
-              <span class="lost-x"></span>
-              <span class="lost-t">Bukti rawatan</span>
-              <span class="lost-s">tidak kebawa waktu mobil dijual</span>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <!-- Three capabilities -->
-      <section class="why reveal">
-        <div class="container">
-          <div class="am-label why-kicker">Kenapa AnakMobil</div>
-          <h2 class="why-title">Tiga hal yang beda di sini</h2>
-
-          <div class="why-grid">
-            <a class="why-card wide" href="/fitur#riwayat">
-              <Card padding="24px" interactive fill>
-                <Icon name="history" size={26} color="var(--accent-500)" />
-                <h3>Riwayat servis yang bertahan</h3>
-                <p>
-                  Catat sekali — tanggal, KM, bengkel, biaya. Riwayatnya ikut mobil: pembeli
-                  berikutnya lihat catatan yang jelas, nilai mobil kamu ikut kejaga.
-                </p>
-                <div class="card-fill">
-                  <ServiceCard
-                    km="0 KM tercatat"
-                    when="Riwayat servis"
-                    note="Kosong dulu. Servis pertama kamu yang mengisinya."
-                  />
-                </div>
-                <span class="card-cta">
-                  Selengkapnya soal riwayat <Icon name="arrow-right" size={15} />
-                </span>
-              </Card>
-            </a>
-
-            <a class="why-card" href="/fitur#build">
-              <Card padding="24px" interactive fill>
-                <Icon name="wrench" size={26} color="var(--accent-500)" />
-                <h3>Build sebagai data, bukan album foto</h3>
-                <p>
-                  Offset, PCD, ukuran ban — tersimpan sebagai angka yang bisa dibandingkan, bukan
-                  caption di foto.
-                </p>
-                <div class="am-spec build-spec card-fill">18×8.5 ET40<br />225/40 R18</div>
-                <span class="card-cta">
-                  Lihat bentuk datanya <Icon name="arrow-right" size={15} />
-                </span>
-              </Card>
-            </a>
-
-            <a class="why-card" href="/fitur#tanya">
-              <Card padding="24px" interactive fill>
-                <Icon name="users" size={26} color="var(--accent-500)" />
-                <h3>Orang yang pernah di posisi kamu</h3>
-                <p>
-                  Tanya ke yang sudah pasang part yang sama di mobil yang sama — bukan forum umum
-                  yang jawabannya "tergantung".
-                </p>
-                <div class="badge-row card-fill">
-                  <Badge>Mobil sama</Badge>
-                  <Badge>Part sama</Badge>
-                </div>
-                <span class="card-cta">Cara nanyanya <Icon name="arrow-right" size={15} /></span>
-              </Card>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <!-- How it works -->
-      <section class="how reveal">
-        <div class="container">
-          <div class="am-label kicker">Cara kerja</div>
-          <h2 class="sec-title">Tiga langkah, mulai dari kosong.</h2>
-          <ol class="steps">
-            <li class="step">
-              <span class="step-n am-spec">01</span>
-              <h3>Catat mobilmu</h3>
-              <p>Tambah mobil: merek, model, generasi, tahun. Garasimu mulai terisi.</p>
-            </li>
-            <li class="step">
-              <span class="step-n am-spec">02</span>
-              <h3>Isi riwayat &amp; build</h3>
-              <p>Servis, part, spek velg dan ban. Tersimpan sebagai angka, bukan caption foto.</p>
-            </li>
-            <li class="step">
-              <span class="step-n am-spec">03</span>
-              <h3>Tanya &amp; bandingin</h3>
-              <p>Ke pemilik mobil yang sama. Jawaban dari pengalaman, bukan tebakan.</p>
-            </li>
-          </ol>
-        </div>
-      </section>
-
-      <!-- For whom -->
-      <section class="who reveal">
-        <div class="container who-grid">
-          <div class="who-lead">
-            <h2 class="sec-title">Buat kamu yang…</h2>
-            <p class="who-sub">Satu tempat, dipakai tiga cara.</p>
-          </div>
-          <ul class="who-list">
-            <li>
-              <span class="who-icon"><Icon name="car" size={20} /></span>
-              <div>
-                <b>Pakai harian</b>
-                <span>Servis rutin kecatat, dengan pengingat yang dihitung dari riwayat mobilmu sendiri.</span>
-              </div>
-            </li>
-            <li>
-              <span class="who-icon"><Icon name="wrench" size={20} /></span>
-              <div>
-                <b>Suka ngoprek</b>
-                <span>Build rapi sebagai data yang bisa dibandingkan dengan mobil yang sama.</span>
-              </div>
-            </li>
-            <li>
-              <span class="who-icon"><Icon name="history" size={20} /></span>
-              <div>
-                <b>Mau jual nanti</b>
-                <span>Riwayat jelas jadi bukti rawatan yang menjaga nilai jual mobilmu.</span>
-              </div>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <!-- Free forever -->
-      <section class="free reveal">
-        <div class="container">
-          <div class="free-box">
-            <div class="free-main">
-              <div class="am-spec free-badge">Gratis selamanya</div>
-              <h2 class="sec-title">Ikut komunitas nggak pernah dipungut bayaran.</h2>
-              <p>
-                Bagikan build, lapor masalah, jawab pertanyaan, catat riwayat servis. Gratis di
-                semua tier, sekarang dan nanti.
-              </p>
+            <div class="card-fill">
+              <ServiceCard
+                km="0 KM tercatat"
+                when="Riwayat servis"
+                note="Kosong dulu. Servis pertama kamu yang mengisinya."
+              />
             </div>
-            <p class="free-note">
-              Yang berbayar nanti cuma kedalaman AI dan alat pribadi. Bukan hak untuk bersuara.
+            <span class="card-cta">
+              Selengkapnya soal riwayat <Icon name="arrow-right" size={15} />
+            </span>
+          </Card>
+        </a>
+
+        <a class="why-card" href="/fitur#build">
+          <Card padding="24px" interactive fill>
+            <Icon name="wrench" size={26} color="var(--accent-500)" />
+            <h3>Build sebagai data, bukan album foto</h3>
+            <p>
+              Offset, PCD, ukuran ban — tersimpan sebagai angka yang bisa dibandingkan, bukan
+              caption di foto.
             </p>
-          </div>
-        </div>
-      </section>
+            <div class="am-spec build-spec card-fill">18×8.5 ET40<br />225/40 R18</div>
+            <span class="card-cta">
+              Lihat bentuk datanya <Icon name="arrow-right" size={15} />
+            </span>
+          </Card>
+        </a>
 
-      <!-- FAQ -->
-      <section class="faq reveal">
-        <div class="container faq-grid">
-          <div class="faq-lead">
-            <div class="am-label kicker">Tanya jawab</div>
-            <h2 class="sec-title">Yang sering ditanya.</h2>
-          </div>
-          <div class="faq-list">
-            {
-              faq.map((f) => (
-                <details>
-                  <summary>{f.q}</summary>
-                  <p>{f.a}</p>
-                </details>
-              ))
-            }
-          </div>
-        </div>
-      </section>
+        <a class="why-card" href="/fitur#tanya">
+          <Card padding="24px" interactive fill>
+            <Icon name="users" size={26} color="var(--accent-500)" />
+            <h3>Orang yang pernah di posisi kamu</h3>
+            <p>
+              Tanya ke yang sudah pasang part yang sama di mobil yang sama — bukan forum umum yang
+              jawabannya "tergantung".
+            </p>
+            <div class="badge-row card-fill">
+              <Badge>Mobil sama</Badge>
+              <Badge>Part sama</Badge>
+            </div>
+            <span class="card-cta">Cara nanyanya <Icon name="arrow-right" size={15} /></span>
+          </Card>
+        </a>
+      </div>
+    </div>
+  </section>
 
-      <!-- Be first -->
-      <section class="first">
-        <div class="container">
-          <CtaBand
-            heading="Jadi yang pertama."
-            body="Aplikasinya masih dibangun — dan kami tidak pura-pura sebaliknya. Daftar waitlist, kami kabari sekali begitu pendaftaran dibuka."
-          />
+  <!-- How it works -->
+  <section class="how reveal">
+    <div class="container">
+      <div class="am-label kicker">Cara kerja</div>
+      <h2 class="sec-title">Tiga langkah, mulai dari kosong.</h2>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-n am-spec">01</span>
+          <h3>Catat mobilmu</h3>
+          <p>Tambah mobil: merek, model, generasi, tahun. Garasimu mulai terisi.</p>
+        </li>
+        <li class="step">
+          <span class="step-n am-spec">02</span>
+          <h3>Isi riwayat &amp; build</h3>
+          <p>Servis, part, spek velg dan ban. Tersimpan sebagai angka, bukan caption foto.</p>
+        </li>
+        <li class="step">
+          <span class="step-n am-spec">03</span>
+          <h3>Tanya &amp; bandingin</h3>
+          <p>Ke pemilik mobil yang sama. Jawaban dari pengalaman, bukan tebakan.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- For whom -->
+  <section class="who reveal">
+    <div class="container who-grid">
+      <div class="who-lead">
+        <h2 class="sec-title">Buat kamu yang…</h2>
+        <p class="who-sub">Satu tempat, dipakai tiga cara.</p>
+      </div>
+      <ul class="who-list">
+        <li>
+          <span class="who-icon"><Icon name="car" size={20} /></span>
+          <div>
+            <b>Pakai harian</b>
+            <span
+              >Servis rutin kecatat, dengan pengingat yang dihitung dari riwayat mobilmu sendiri.</span
+            >
+          </div>
+        </li>
+        <li>
+          <span class="who-icon"><Icon name="wrench" size={20} /></span>
+          <div>
+            <b>Suka ngoprek</b>
+            <span>Build rapi sebagai data yang bisa dibandingkan dengan mobil yang sama.</span>
+          </div>
+        </li>
+        <li>
+          <span class="who-icon"><Icon name="history" size={20} /></span>
+          <div>
+            <b>Mau jual nanti</b>
+            <span>Riwayat jelas jadi bukti rawatan yang menjaga nilai jual mobilmu.</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Free forever -->
+  <section class="free reveal">
+    <div class="container">
+      <div class="free-box">
+        <div class="free-main">
+          <div class="am-spec free-badge">Gratis selamanya</div>
+          <h2 class="sec-title">Ikut komunitas nggak pernah dipungut bayaran.</h2>
+          <p>
+            Bagikan build, lapor masalah, jawab pertanyaan, catat riwayat servis. Gratis di semua
+            tier, sekarang dan nanti.
+          </p>
         </div>
-      </section>
+        <p class="free-note">
+          Yang berbayar nanti cuma kedalaman AI dan alat pribadi. Bukan hak untuk bersuara.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq reveal">
+    <div class="container faq-grid">
+      <div class="faq-lead">
+        <div class="am-label kicker">Tanya jawab</div>
+        <h2 class="sec-title">Yang sering ditanya.</h2>
+      </div>
+      <div class="faq-list">
+        {
+          faq.map((f) => (
+            <details>
+              <summary>{f.q}</summary>
+              <p>{f.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- Be first -->
+  <section class="first">
+    <div class="container">
+      <CtaBand
+        heading="Jadi yang pertama."
+        body="Aplikasinya masih dibangun — dan kami tidak pura-pura sebaliknya. Daftar waitlist, kami kabari sekali begitu pendaftaran dibuka."
+      />
+    </div>
+  </section>
 </Shell>
 
 <style>
@@ -799,5 +801,4 @@ const faqSchema = {
     padding: 0 0 18px;
     max-width: 62ch;
   }
-
 </style>

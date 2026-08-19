@@ -1,5 +1,5 @@
 // https://docs.expo.dev/guides/using-eslint/
-const { defineConfig } = require('eslint/config');
+const { defineConfig } = require("eslint/config");
 const expoConfig = require("eslint-config-expo/flat");
 
 module.exports = defineConfig([
@@ -11,5 +11,5 @@ module.exports = defineConfig([
       // deliberate escape hatch (the ticket asks for no `any` in domain types).
       "@typescript-eslint/no-explicit-any": "error",
     },
-  }
+  },
 ]);
