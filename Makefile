@@ -16,6 +16,27 @@ MOBILE_DIR := apps/mobile
 # Which platform the mb-run-* device builds target. `p=android` overrides.
 p ?= ios
 
+# `make dev m=ios|android|both` also opens the app on a simulator/emulator.
+#
+# Opening is NOT the default, and that is deliberate: `make dev` is meant to be
+# the five-second "start the servers" command, and it must work on a machine
+# with no simulator booted at all — someone editing the landing page needs
+# neither Xcode nor an emulator. Opening a device is opt-in.
+#
+# This opens an ALREADY-INSTALLED dev client; it does not build one. The native
+# build is `make mb-run-dev p=ios|android`, which takes minutes and only has to
+# be re-run when native dependencies change.
+m ?= none
+ifeq ($(m),ios)
+DEV_OPEN := --ios
+else ifeq ($(m),android)
+DEV_OPEN := --android
+else ifeq ($(m),both)
+DEV_OPEN := --ios --android
+else
+DEV_OPEN :=
+endif
+
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check \
@@ -122,17 +143,26 @@ db-psql: ## Open a psql shell on the development database
 # the comment onto the next line — silently swallowing the command that
 # follows it. That is not hypothetical; it is how the first version of this
 # target ran nothing at all while reporting success.
-dev: db-up ds-build ## Run every surface that exists — API, landing, and Metro
+dev: db-up ds-build ## Run every surface — API, landing, Metro (m=ios|android|both opens the app)
 	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
 	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
 	@echo 'metro    \033[36mhttp://localhost:8081\033[0m'
+	@if [ -n '$(DEV_OPEN)' ]; then echo 'opening  \033[36m$(m)\033[0m'; else echo 'mobile   \033[36mMetro only — `make dev m=both` also opens the app\033[0m'; fi
 	@echo 'ctrl-c stops all'
 	@echo
+	@case '$(m)' in ios|both) [ -d $(MOBILE_DIR)/ios ] || echo '\033[33mnote:\033[0m no iOS dev client yet — run `make mb-run-dev p=ios` once, then this opens it';; esac
+	@case '$(m)' in android|both) [ -d $(MOBILE_DIR)/android ] || echo '\033[33mnote:\033[0m no Android dev client yet — run `make mb-run-dev p=android` once, then this opens it';; esac
+	@case '$(m)' in android|both) \
+		if ! command -v adb >/dev/null; then \
+			echo '\033[33mnote:\033[0m adb is not on PATH — export PATH="$$PATH:$$HOME/Library/Android/sdk/platform-tools"'; \
+		elif [ -z "$$(adb devices | sed 1d | grep .)" ]; then \
+			echo '\033[33mnote:\033[0m no Android device attached; Expo will try to boot an emulator'; \
+		fi;; esac
 	@set -m; \
 		trap 'kill -- -$$api -$$landing -$$mobile 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 -ti tcp:8081 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
 		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
 		( bun run --filter $(LANDING) dev 2>&1 | awk '{print "[landing] " $$0; fflush()}' ) & landing=$$!; \
-		( bun run --filter $(MOBILE) start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) & mobile=$$!; \
+		( cd $(MOBILE_DIR) && bunx expo start --dev-client $(DEV_OPEN) 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) & mobile=$$!; \
 		wait
 
 be-web: ## Run the API in its web role

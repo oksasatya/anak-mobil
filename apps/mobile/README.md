@@ -26,10 +26,26 @@ make mb-check                 # gate: prettier --check → typed routes → tsc 
 make mb-run-dev p=ios         # build+install the dev client on a device/simulator (p=ios|android)
 make mb-run-preview p=ios     # the preview profile
 make mb-run-prod p=ios        # the production profile
-bun run --filter @anakmobil/mobile start   # Metro only, once a dev client is installed
 ```
 
-First run builds the native app locally (`expo run:*`); after that, `start` (Metro) is the day-to-day loop against the installed dev client.
+**Two steps, and the split is the point.** `mb-run-*` performs a **native build** — Gradle or Xcode, minutes on a first run — and only has to happen once, then again when a native dependency changes. Everything after that is JavaScript, served by Metro.
+
+So the daily loop is the repo-wide dev command, which starts the API, the landing site, and Metro together:
+
+```bash
+make dev              # API + landing + Metro
+make dev m=ios        # …and opens the app on the iOS simulator
+make dev m=android    # …and on an Android emulator
+make dev m=both       # …and on both
+```
+
+`m=` opens an **already-installed** dev client; it never builds one. Run `make mb-run-dev` once first, or the app it tries to open is not there yet — `make dev` says so rather than failing silently. Opening is opt-in because `make dev` has to stay usable on a machine with no simulator at all: someone editing the landing page needs neither Xcode nor an emulator.
+
+Metro's interactive keys (`i`, `a`, `r`) do **not** work under `make dev` — its output is piped through `awk` for the log prefix, which costs the TTY. That is exactly why `m=` exists: the platform is chosen at startup instead of by keypress. For the interactive Metro, run it alone:
+
+```bash
+bun run --filter @anakmobil/mobile start
+```
 
 ## Environment profiles
 

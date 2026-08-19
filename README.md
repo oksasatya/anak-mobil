@@ -196,6 +196,7 @@ make be-web        # start the HTTP role
 make be-worker     # start the background role
 make be-migrate    # apply migrations and exit
 
+make dev           # API + landing + Metro together (m=ios|android|both also opens the app)
 make ds-check      # regenerate the design tokens and test them
 make fe-dev        # landing dev server on :4321
 make fe-check      # landing type check and build
