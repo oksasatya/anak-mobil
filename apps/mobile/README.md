@@ -26,6 +26,7 @@ make mb-check                 # gate: prettier --check → typed routes → tsc 
 make mb-run-dev p=ios         # build+install the dev client on a device/simulator (p=ios|android)
 make mb-run-preview p=ios     # the preview profile
 make mb-run-prod p=ios        # the production profile
+make mb-reverse               # bridge localhost:8080 into an attached Android device
 ```
 
 **Two steps, and the split is the point.** `mb-run-*` performs a **native build** — Gradle or Xcode, minutes on a first run — and only has to happen once, then again when a native dependency changes. Everything after that is JavaScript, served by Metro.
@@ -61,8 +62,17 @@ flowchart LR
   U --> S["healthcheck screen<br/>shows profile + URL + /healthz"]
 ```
 
-- **`.env.development`** is committed (an example pointing at a LAN IP — see below). `.env.preview` / `.env.production` are the developer's own, or pulled with `eas env:pull`, and stay gitignored.
-- **The dev URL is the machine's LAN IP, not `localhost`.** A physical phone's loopback is the phone itself, so a build pointed at `localhost` fails on a real device. Find yours with `ipconfig getifaddr en0` and edit `.env.development`.
+- **`.env.development`** is committed and points at `http://localhost:8080`. `.env.preview` / `.env.production` are the developer's own, or pulled with `eas env:pull`, and stay gitignored.
+- **`localhost` is not the same word on every target**, and this is the one thing worth reading twice:
+
+  | Target | Does `localhost:8080` reach the API? |
+  |---|---|
+  | iOS simulator | Yes — it shares the host's network stack |
+  | Android emulator | Only with `adb reverse` — otherwise `localhost` is the emulator |
+  | Android phone over USB | Only with `adb reverse` — same reason |
+  | **Physical iPhone** | **No.** There is no adb; point the URL at the Mac's LAN IP |
+
+  `make dev m=android|both` runs the bridge when a device is already attached; when Expo boots the emulator itself, run `make mb-reverse` once it is up. Re-apply it after a reconnect or an emulator restart. For a physical iPhone, set `EXPO_PUBLIC_API_URL` to `http://<lan-ip>:8080` (`ipconfig getifaddr en0`) — the API binds `0.0.0.0:8080`, so it is reachable.
 - The `mb-run-<variant>` targets set `APP_VARIANT` and source the matching env file so the right URL is inlined; the healthcheck screen (`src/app/index.tsx`) prints the resolved profile and URL so a wrong one is obvious on first launch.
 
 ## Structure

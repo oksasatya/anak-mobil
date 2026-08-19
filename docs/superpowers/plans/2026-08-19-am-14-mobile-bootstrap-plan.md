@@ -1153,6 +1153,12 @@ Three things landed in this branch that the plan did not schedule. Recorded here
 
 3. **JetBrains run configurations in `.run/`.** The IDE's built-in *React Native* configuration invokes `react-native/cli.js`, which is the bare-RN path and reports `react-native/cli is deprecated`. Installing `@react-native-community/cli` to satisfy it would have been wrong: `apps/mobile` has no `metro.config.js` and no `babel.config.js`, because Expo CLI supplies the entire bundler and transform pipeline at runtime. Metro started through the RN CLI produces a bundle with no `expo-router` entry and no `EXPO_PUBLIC_*` inlining — a broken app behind a green command. Four Shell Script configurations now call the real entry points (`make mb-run-dev p=ios|android`, Metro, `make mb-check`).
 
+### Refinement to the spec's F2 (the LAN-IP finding), after the owner asked for `localhost`
+
+The spec's grill finding F2 said the development URL must be the machine's LAN IP because a physical phone's loopback is the phone. That is still true **for a physical iPhone**, and it is why the finding existed. It over-generalised to the emulator case: `adb reverse tcp:8080 tcp:8080` forwards a device port back to the host, so one value — `http://localhost:8080` — is correct on the iOS simulator, an Android emulator, and a USB-attached Android phone alike.
+
+So `.env.development` now ships `localhost`, which is the value that works for the default simulator/emulator workflow with no per-machine editing, and `make mb-reverse` supplies the Android bridge (`make dev m=android|both` applies it automatically when a device is already attached). The physical-iPhone case is documented as the one that still needs a LAN IP, in `.env.development`'s own comment and in the mobile README's target table. Expo already reverses Metro's 8081; the API port was ours to add.
+
 ## Review findings ledger
 
 Controller self-caught during execution (fixed inline, before the independent review):

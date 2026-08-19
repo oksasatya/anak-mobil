@@ -40,7 +40,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check \
-        mb-check mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
+        mb-check mb-reverse mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
 
 # Load .env and hand every value to the recipes below.
 #
@@ -156,7 +156,9 @@ dev: db-up ds-build ## Run every surface — API, landing, Metro (m=ios|android|
 		if ! command -v adb >/dev/null; then \
 			echo '\033[33mnote:\033[0m adb is not on PATH — export PATH="$$PATH:$$HOME/Library/Android/sdk/platform-tools"'; \
 		elif [ -z "$$(adb devices | sed 1d | grep .)" ]; then \
-			echo '\033[33mnote:\033[0m no Android device attached; Expo will try to boot an emulator'; \
+			echo '\033[33mnote:\033[0m no Android device attached; Expo will boot an emulator — then run `make mb-reverse` so localhost:8080 reaches the API'; \
+		else \
+			$(MAKE) --no-print-directory mb-reverse; \
 		fi;; esac
 	@set -m; \
 		trap 'kill -- -$$api -$$landing -$$mobile 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 -ti tcp:8081 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
@@ -277,6 +279,18 @@ fe-check: ds-check fmt-check ## Type-check, format-check, and build the landing 
 mb-check: fmt-check ## Format-check, type-check, and lint the mobile app
 	bun run --filter $(MOBILE) check
 	@echo "mobile gate green"
+
+# Android's `localhost` is the device, not this Mac, so the app cannot reach the
+# API without a bridge. `adb reverse` forwards a device port back to the host,
+# which is what lets one EXPO_PUBLIC_API_URL of http://localhost:8080 be correct
+# on the iOS simulator, an Android emulator, and a USB-attached Android phone
+# alike. Expo already reverses Metro's own 8081; the API port is ours to add.
+#
+# It has to be re-applied whenever the device reconnects or the emulator restarts.
+mb-reverse: ## Bridge the API port into an attached Android device (localhost:8080)
+	@adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 \
+		&& echo 'adb reverse tcp:8080 -> host (localhost:8080 now reaches the API)' \
+		|| echo 'no Android device attached — start one, then re-run `make mb-reverse`'
 
 mb-run-dev: ## Build+run the development variant on a device (p=ios|android)
 	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; set +a; \
