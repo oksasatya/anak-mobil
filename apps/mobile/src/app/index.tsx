@@ -1,6 +1,9 @@
 import Constants from "expo-constants";
+import { Link } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+
+import { useTheme } from "@/theme";
 
 // Inlined by babel at build time; the one value the bundle carries.
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "(belum diatur)";
@@ -11,6 +14,11 @@ const VARIANT =
 type Health = "memeriksa" | "terhubung" | "gagal";
 
 export default function Healthcheck() {
+  // AM-15 made the app-wide ground theme-aware, which turned this screen's
+  // previously implicit colours invisible in dark mode (RN's default text is
+  // #000000 — 1.12:1 on the dark ground). The text colours therefore come
+  // from the theme; the layout and copy stay AM-14's.
+  const theme = useTheme();
   const [status, setStatus] = useState<Health>("memeriksa");
   const [detail, setDetail] = useState("");
 
@@ -34,19 +42,32 @@ export default function Healthcheck() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Status Koneksi API</Text>
-      <Text style={styles.row}>Profil: {VARIANT}</Text>
-      <Text style={styles.row}>Alamat API: {API_URL}</Text>
+      <Text style={[styles.title, { color: theme.color.textPrimary }]}>Status Koneksi API</Text>
+      <Text style={[styles.row, { color: theme.color.textPrimary }]}>Profil: {VARIANT}</Text>
+      <Text style={[styles.row, { color: theme.color.textPrimary }]}>Alamat API: {API_URL}</Text>
       {status === "memeriksa" ? (
         <View style={styles.statusRow}>
           <ActivityIndicator />
-          <Text style={styles.row}>Memeriksa…</Text>
+          <Text style={[styles.row, { color: theme.color.textPrimary }]}>Memeriksa…</Text>
         </View>
       ) : (
-        <Text style={status === "terhubung" ? styles.ok : styles.fail}>
+        <Text
+          style={[
+            styles.row,
+            {
+              color:
+                status === "terhubung"
+                  ? theme.color.semanticText.success
+                  : theme.color.semanticText.danger,
+            },
+          ]}
+        >
           {status === "terhubung" ? `Terhubung (${detail})` : `Gagal terhubung — ${detail}`}
         </Text>
       )}
+      <Link href="/catalog" style={[styles.row, { color: theme.color.accentText }]}>
+        Buka katalog komponen
+      </Link>
     </View>
   );
 }
@@ -56,6 +77,4 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "600" },
   row: { fontSize: 15 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  ok: { fontSize: 15, color: "#137333" },
-  fail: { fontSize: 15, color: "#c5221f" },
 });
