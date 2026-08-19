@@ -1139,6 +1139,20 @@ The plan was written from Expo docs; the real SDK-57 default template is richer.
 8. **Unused Expo example images pruned** (react-logo*, expo-badge*, tabIcons/, tutorial-web, logo-glow, expo-logo) — branding not ours; the referenced icon/splash/adaptive assets kept.
 9. **Template `README.md` replaced** with a real one (§25) — the shipped boilerplate documented npm + Expo Go, both wrong for this repo's Bun + dev-client + `mb-check` flow.
 
+## Work added after the plan (owner-directed, same PR)
+
+Three things landed in this branch that the plan did not schedule. Recorded here so the diff has a written reason.
+
+1. **Prettier, repo-wide** (owner decision). The plan's Block Q had no formatter because the repository had none — `apps/landing` and `packages/tokens` were unformatted too, and AM-22's definition of done names *lint and format*. Prettier 3.9 + `prettier-plugin-astro` now owns every JS/TS/Astro/CSS/JSON file; `cargo fmt` still owns `apps/api`; Markdown is excluded because the specs and READMEs are wrapped by hand.
+
+   **Style follows the repository, not preference.** Measured first: 36 double-quoted imports in landing, 56 in tokens, against 5 single-quoted in mobile (the files written this session, following the Expo template). So Prettier's default double quotes won, and mobile reformatted — the merged code was not churned to suit the newest workspace. `printWidth: 100`.
+
+   **One real trap, and it changed the design.** Running `prettier --check .` from inside a workspace does **not** read the root `.prettierignore` — Prettier resolves it relative to the working directory. Wired as a line in each workspace's `check` script it therefore started checking `dist/`, `assets/`, generated declarations, and tool caches, and both `mb-check` and `ds-check` went red. Formatting is now a **Make prerequisite** (`mb-check: fmt-check`, `fe-check: ds-check fmt-check`) that runs once from the root, where the ignore file applies. Proven: an unformatted probe file reddens `make mb-check` naming the file; removing it restores green.
+
+2. **Four `.impeccable/hook.cache.json` files were tracked in git** — `apps/api`, `apps/api/crates/runtime`, `apps/landing`, `packages/tokens` — carrying absolute filesystem paths (`/Volumes/Project/...`) and session identifiers. Found because Prettier tried to reformat them. This is the same class of leak `frontend.yml`'s "No hidden files published" step was written for, except that guard only inspects `dist/`. Untracked with `git rm --cached` (the files stay on disk). `.gitignore` already carried `.impeccable/hook.cache.json` at line 36 — the rule was added *after* these files were first committed, and git keeps tracking what it already tracks, so the ignore line had been inert for them. Removing them from the index is what finally makes it apply.
+
+3. **JetBrains run configurations in `.run/`.** The IDE's built-in *React Native* configuration invokes `react-native/cli.js`, which is the bare-RN path and reports `react-native/cli is deprecated`. Installing `@react-native-community/cli` to satisfy it would have been wrong: `apps/mobile` has no `metro.config.js` and no `babel.config.js`, because Expo CLI supplies the entire bundler and transform pipeline at runtime. Metro started through the RN CLI produces a bundle with no `expo-router` entry and no `EXPO_PUBLIC_*` inlining — a broken app behind a green command. Four Shell Script configurations now call the real entry points (`make mb-run-dev p=ios|android`, Metro, `make mb-check`).
+
 ## Review findings ledger
 
 Controller self-caught during execution (fixed inline, before the independent review):

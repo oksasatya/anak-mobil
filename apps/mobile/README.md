@@ -22,7 +22,7 @@ The AnakMobil.id mobile app — React Native via Expo, in the repository's Bun w
 All `make` targets run from the **repository root**.
 
 ```bash
-make mb-check                 # gate: generate typed routes → tsc --noEmit → expo lint
+make mb-check                 # gate: prettier --check → typed routes → tsc --noEmit → expo lint
 make mb-run-dev p=ios         # build+install the dev client on a device/simulator (p=ios|android)
 make mb-run-preview p=ios     # the preview profile
 make mb-run-prod p=ios        # the production profile
@@ -59,4 +59,4 @@ src/app/index.tsx    healthcheck screen
 .env.development      committed example (LAN IP)
 ```
 
-CI: `.github/workflows/mobile.yml` runs `mb-check` (type-clean + lint-clean) on every change under `apps/mobile/`. It does not build a native binary — that is local (`expo run:*`) or on-demand in the cloud (`eas build`).
+CI: `.github/workflows/mobile.yml` runs the same checks (format-clean + type-clean + lint-clean) on every change under `apps/mobile/`. It does not build a native binary — that is local (`expo run:*`) or on-demand in the cloud (`eas build`).

@@ -199,6 +199,8 @@ make be-migrate    # apply migrations and exit
 make ds-check      # regenerate the design tokens and test them
 make fe-dev        # landing dev server on :4321
 make fe-check      # landing type check and build
+make mb-check      # mobile format, type check, and lint
+make fmt           # format every JS/TS/Astro/CSS/JSON file (cargo fmt owns apps/api)
 ```
 
 `make` with no target lists everything.
