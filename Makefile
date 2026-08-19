@@ -10,10 +10,16 @@ LANDING := @anakmobil/landing
 # A scratch database for the sqlx cache. Empty by construction — see be-prepare.
 PREPARE_URL := postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil_prepare
 TOKENS := @anakmobil/tokens
+MOBILE := @anakmobil/mobile
+MOBILE_DIR := apps/mobile
+
+# Which platform the mb-run-* device builds target. `p=android` overrides.
+p ?= ios
 
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
-        ds-build ds-check fe-dev fe-build fe-preview fe-check check
+        ds-build ds-check fe-dev fe-build fe-preview fe-check \
+        mb-check mb-run-dev mb-run-preview mb-run-prod check
 
 # Load .env and hand every value to the recipes below.
 #
@@ -119,15 +125,17 @@ db-psql: ## Open a psql shell on the development database
 #
 # When apps/mobile is scaffolded, add one more line to the group:
 #   ( bun run --filter @anakmobil/mobile start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) &
-dev: db-up ds-build ## Run every surface that exists — API and landing, together
+dev: db-up ds-build ## Run every surface that exists — API, landing, and Metro
 	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
 	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
-	@echo 'ctrl-c stops both'
+	@echo 'metro    \033[36mhttp://localhost:8081\033[0m'
+	@echo 'ctrl-c stops all'
 	@echo
 	@set -m; \
-		trap 'kill -- -$$api -$$landing 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
+		trap 'kill -- -$$api -$$landing -$$mobile 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 -ti tcp:8081 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
 		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
 		( bun run --filter $(LANDING) dev 2>&1 | awk '{print "[landing] " $$0; fflush()}' ) & landing=$$!; \
+		( bun run --filter $(MOBILE) start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) & mobile=$$!; \
 		wait
 
 be-web: ## Run the API in its web role
@@ -223,4 +231,36 @@ fe-check: ds-check ## Type-check and build the landing site
 	bun run --filter $(LANDING) gate
 	@echo "landing gate green"
 
-check: be-check fe-check ## Every gate in the repository
+# --- Mobile ------------------------------------------------------------------
+#
+# mb-check mirrors fe-check: it runs the workspace's own `check` script, which
+# generates the Expo Router typed routes, then `tsc --noEmit`, then `expo lint`.
+# The mb-run-* targets each pick a build profile — they set APP_VARIANT so
+# app.config.ts resolves that variant's app id/name, and source the matching
+# apps/mobile/.env.<variant> so EXPO_PUBLIC_API_URL is a real process-env var
+# that babel inlines. `p=ios` (default) or `p=android` chooses the device.
+#
+# These recipes inherit the root .env like every recipe (`-include .env; export`
+# above). They consume none of it, and only EXPO_PUBLIC_-prefixed vars ever reach
+# the bundle — a backend secret has no such name — so nothing can leak here.
+#
+# mb-run-* build to a real device and need the owner's Xcode/Android Studio; they
+# cannot run in CI, which only runs mb-check.
+
+mb-check: ## Type-check and lint the mobile app (typed routes generated first)
+	bun run --filter $(MOBILE) check
+	@echo "mobile gate green"
+
+mb-run-dev: ## Build+run the development variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; set +a; \
+		cd $(MOBILE_DIR) && APP_VARIANT=development bunx expo run:$(p)
+
+mb-run-preview: ## Build+run the preview variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.preview ] && . ./$(MOBILE_DIR)/.env.preview; set +a; \
+		cd $(MOBILE_DIR) && APP_VARIANT=preview bunx expo run:$(p)
+
+mb-run-prod: ## Build+run the production variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; set +a; \
+		cd $(MOBILE_DIR) && APP_VARIANT=production bunx expo run:$(p)
+
+check: be-check fe-check mb-check ## Every gate in the repository
