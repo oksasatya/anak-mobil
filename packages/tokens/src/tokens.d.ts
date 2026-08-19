@@ -99,12 +99,65 @@ export declare const layout: {
   readonly touchTargetMin: number;
 };
 
+export type TextRole = "primary" | "secondary" | "tertiary";
+export type MaterialRole = "chrome" | "surface" | "working";
+
+export interface MaterialRecipe {
+  /** The colour laid over the backdrop. A rendering input, never the contract. */
+  readonly tint: string;
+  /** 0-1. A rendering input. `1` means solid — zero transparency. */
+  readonly coverage: number;
+  /** The composited colour over the app's own ground. THIS is the contract. */
+  readonly solid: string;
+  /** Text roles proven to clear 4.5:1 on this material against any backdrop. */
+  readonly allowsText: readonly TextRole[];
+}
+
+export interface EdgeTokens {
+  readonly highlight: string;
+  readonly insetShadow: string;
+  readonly borderWidth: number;
+  readonly scrim: string;
+}
+
+export interface GroundStop {
+  readonly color: string;
+  readonly at: number;
+}
+
+export interface GroundTokens {
+  readonly stops: readonly GroundStop[];
+  readonly tintStrength: number;
+}
+
+export interface SemanticTextColors {
+  readonly success: string;
+  readonly warning: string;
+  readonly danger: string;
+  readonly info: string;
+}
+
+export declare const onAccent: string;
+export declare const onGraphite: string;
+export declare const semanticText: Readonly<Record<"light" | "dark", SemanticTextColors>>;
+export declare const material: Readonly<
+  Record<"light" | "dark", Readonly<Record<MaterialRole, MaterialRecipe>>>
+>;
+export declare const edge: Readonly<Record<"light" | "dark", EdgeTokens>>;
+export declare const ground: Readonly<Record<"light" | "dark", GroundTokens>>;
+
 export declare const tokens: {
   readonly brand: typeof brand;
   readonly accent: typeof accent;
   readonly semantic: typeof semantic;
+  readonly onAccent: typeof onAccent;
+  readonly onGraphite: typeof onGraphite;
+  readonly semanticText: typeof semanticText;
   readonly light: ThemeColors;
   readonly dark: ThemeColors;
+  readonly material: typeof material;
+  readonly edge: typeof edge;
+  readonly ground: typeof ground;
   readonly spacing: typeof spacing;
   readonly radius: typeof radius;
   readonly typography: typeof typography;
