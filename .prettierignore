@@ -1,0 +1,23 @@
+# Rust owns its own formatting — `cargo fmt`, run by `make be-fmt`.
+apps/api/
+
+# Generated or vendored output. Reformatting these is churn at best and, for
+# the token CSS, a diff against a file the generator will overwrite anyway.
+**/node_modules/
+packages/tokens/dist/
+apps/landing/dist/
+apps/landing/.astro/
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+graphify-out/
+bun.lock
+
+# Prose, written deliberately. Prettier rewraps Markdown and would mangle the
+# line breaks in the specs, plans, and READMEs that were composed by hand.
+**/*.md
+
+# Tool caches and generated declaration/asset files — not authored here.
+**/.impeccable/
+apps/mobile/expo-env.d.ts
+apps/mobile/assets/
