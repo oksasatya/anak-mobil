@@ -11,6 +11,10 @@
       "types": "./src/tokens.d.ts",
       "default": "./src/tokens.js"
     },
+    "./derive": {
+      "types": "./src/derive.d.ts",
+      "default": "./src/derive.js"
+    },
     "./css": "./dist/tokens.css",
     "./theme": "./dist/theme.css"
   },

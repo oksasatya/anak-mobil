@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Aplikasi mobile AnakMobil.id — AM-14",
   "dependencies": {
+    "@anakmobil/tokens": "*",
+    "@expo-google-fonts/inter": "^0.4.2",
     "@expo/ui": "~57.0.11",
     "expo": "~57.0.14",
     "expo-constants": "~57.0.12",

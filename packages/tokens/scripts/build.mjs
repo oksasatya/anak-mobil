@@ -9,6 +9,11 @@
  *
  * React Native needs neither: it imports `src/tokens.js` directly.
  *
+ * The `material`, `edge`, and `ground` groups are deliberately NOT emitted
+ * here. They are mobile-only (AM-15), and putting them into theme.css would
+ * add custom properties to the backoffice's Tailwind theme that nothing
+ * reads. When a web surface needs the material, emit it then.
+ *
  * No dependencies and no bundler. This runs on plain Node, which is what
  * keeps the package cheap enough that regenerating is never a chore.
  */
