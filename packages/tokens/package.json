@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Design tokens generated from docs/design.md \u2014 one source, three consumers",
+  "description": "Design tokens generated from docs/design.md — one source, three consumers",
   "main": "./src/tokens.js",
   "types": "./src/tokens.d.ts",
   "exports": {

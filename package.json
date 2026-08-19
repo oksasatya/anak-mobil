@@ -15,6 +15,12 @@
     "be:worker": "make be-worker",
     "be:check": "make be-check",
     "be:lint": "make be-lint",
-    "be:test": "make be-test"
+    "be:test": "make be-test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "prettier-plugin-astro": "^0.14.1"
   }
 }

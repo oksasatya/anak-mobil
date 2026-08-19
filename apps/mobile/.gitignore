@@ -1,0 +1,47 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# The repository-root .gitignore ignores every `.env.*` file (only `.env.example`
+# is re-included there). Re-include the one committed env example so a fresh clone
+# has the file AC1's "clone and run" needs. `.env.preview` / `.env.production` stay
+# ignored — they are the developer's own, or pulled via `eas env:pull`.
+!.env.development
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android

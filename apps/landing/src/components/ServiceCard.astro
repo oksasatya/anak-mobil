@@ -19,19 +19,36 @@ export interface Props {
   class?: string;
 }
 
-const { km, when, items = [], note, garage, cost, upcoming = false, class: className } = Astro.props;
+const {
+  km,
+  when,
+  items = [],
+  note,
+  garage,
+  cost,
+  upcoming = false,
+  class: className,
+} = Astro.props;
 const classes = ["svc", upcoming && "upcoming", className].filter(Boolean).join(" ");
 ---
 
 <div class={classes}>
   <div class="head">
     <div class="km-wrap">
-      {upcoming && <span class="dot"></span>}
+      {upcoming && <span class="dot" />}
       <span class="am-spec km">{km}</span>
     </div>
     {when && <span class="when">{when}</span>}
   </div>
-  {items.length > 0 && <div class="items">{items.map((it) => <div>{it}</div>)}</div>}
+  {
+    items.length > 0 && (
+      <div class="items">
+        {items.map((it) => (
+          <div>{it}</div>
+        ))}
+      </div>
+    )
+  }
   {note && <div class="note">{note}</div>}
   {
     (garage || cost) && (

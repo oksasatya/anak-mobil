@@ -74,14 +74,18 @@ const jsonLd = [
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
-    {/* Matches the token so the browser chrome does not flash a different
-        colour than the page behind it. */}
+    {
+      /* Matches the token so the browser chrome does not flash a different
+        colour than the page behind it. */
+    }
     <meta name="theme-color" content="#1D232A" />
 
     {/* Structured data: site-wide Organization + WebSite, plus any page schema. */}
-    {jsonLd.map((obj) => (
-      <script type="application/ld+json" is:inline set:html={JSON.stringify(obj)} />
-    ))}
+    {
+      jsonLd.map((obj) => (
+        <script type="application/ld+json" is:inline set:html={JSON.stringify(obj)} />
+      ))
+    }
   </head>
   <body>
     <slot />
