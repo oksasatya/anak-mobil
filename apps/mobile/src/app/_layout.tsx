@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   DarkTheme,
   DefaultTheme,
@@ -9,6 +10,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AmGround } from "@/components/material";
 import { ToastProvider } from "@/components/state";
+import { queryClient, useBootstrap } from "@/shared";
 import { CapabilityControlContext, ThemeProvider, useAppFonts, useTheme } from "@/theme";
 
 /**
@@ -32,39 +34,47 @@ function TransparentNavigationTheme({ children }: { readonly children: ReactNode
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // ThemeProvider sits above the route tree so every screen and every
-// primitive resolves the same theme; CapabilityControlContext sits just
-// inside it so the catalogue's "force no blur" switch reaches every
-// primitive in the tree, not only the catalogue screen itself. AmGround is
-// the bottom layer so the stack renders transparently over the graphite
-// gradient. ToastProvider sits inside AmGround so the toast renders above
-// the ground but below nothing else.
+// primitive resolves the same theme; QueryClientProvider sits immediately
+// inside it so every screen can useQuery regardless of which gated group it
+// renders under. CapabilityControlContext sits next so the catalogue's
+// "force no blur" switch reaches every primitive in the tree, not only the
+// catalogue screen itself. AmGround is the bottom layer so the stack renders
+// transparently over the graphite gradient. ToastProvider sits inside
+// AmGround so the toast renders above the ground but below nothing else.
 export default function RootLayout() {
   const fontsReady = useAppFonts();
+  // The splash screen used to hide as soon as fonts were ready; it must now
+  // hold until the session resolves too, or the welcome screen flashes before
+  // useBootstrap has had a chance to land on the garage.
+  const sessionReady = useBootstrap();
+  const ready = fontsReady && sessionReady;
   const [forceTint, setForceTint] = useState(false);
   const capability = useMemo(() => ({ forceTint, setForceTint }), [forceTint]);
 
   useEffect(() => {
-    if (fontsReady) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsReady]);
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
-  if (!fontsReady) return null;
+  if (!ready) return null;
 
   return (
     <ThemeProvider>
-      <CapabilityControlContext.Provider value={capability}>
-        <AmGround>
-          <ToastProvider>
-            <TransparentNavigationTheme>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: "transparent" },
-                }}
-              />
-            </TransparentNavigationTheme>
-          </ToastProvider>
-        </AmGround>
-      </CapabilityControlContext.Provider>
+      <QueryClientProvider client={queryClient}>
+        <CapabilityControlContext.Provider value={capability}>
+          <AmGround>
+            <ToastProvider>
+              <TransparentNavigationTheme>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: "transparent" },
+                  }}
+                />
+              </TransparentNavigationTheme>
+            </ToastProvider>
+          </AmGround>
+        </CapabilityControlContext.Provider>
+      </QueryClientProvider>
     </ThemeProvider>
   );
 }
