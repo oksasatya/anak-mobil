@@ -1,5 +1,6 @@
 //! Authentication endpoints and the extractor that guards everything else.
 
+use anakmobil_domain::identity::username::{self, UsernameError};
 use axum::Json;
 use axum::extract::{ConnectInfo, FromRequestParts, MatchedPath, State};
 use axum::http::header::AUTHORIZATION;
@@ -9,6 +10,7 @@ use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::adapter::postgres::user_repo::{self, PlatformRole};
+use crate::adapter::redis::rate_limit::LoginAttempt;
 use crate::platform::state::AppState;
 use crate::shared::errors::ApiError;
 use crate::shared::response::ApiResponse;
@@ -22,6 +24,10 @@ use crate::usecase::auth::{self, AuthError};
 #[derive(Debug, Clone, Copy)]
 pub struct Authenticated {
     pub user_id: Uuid,
+    /// The session this token belongs to, so a handler that must end it does
+    /// not have to rediscover it. Every handler that only wants `user_id`
+    /// ignores this field and is unaffected.
+    pub session_id: Uuid,
 }
 
 impl FromRequestParts<AppState> for Authenticated {
@@ -42,7 +48,10 @@ impl FromRequestParts<AppState> for Authenticated {
             .authenticate(token)
             .await
             .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?
-            .map(|user_id| Self { user_id })
+            .map(|resolved| Self {
+                user_id: resolved.user_id,
+                session_id: resolved.session_id,
+            })
             .ok_or_else(ApiError::unauthorized)
     }
 }
@@ -77,7 +86,7 @@ impl FromRequestParts<AppState> for Admin {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
-        let Authenticated { user_id } = Authenticated::from_request_parts(parts, state).await?;
+        let Authenticated { user_id, .. } = Authenticated::from_request_parts(parts, state).await?;
 
         let mut conn = state
             .pool
@@ -114,9 +123,21 @@ impl FromRequestParts<AppState> for Admin {
     }
 }
 
+/// What `/auth/login` takes, and nothing else.
+///
+/// Registration has its own type. Sharing one would have meant adding
+/// `username` here, which would make the shipped login contract demand a field
+/// no client sends.
 #[derive(Debug, Deserialize)]
 pub struct CredentialsRequest {
     pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegistrationRequest {
+    pub email: String,
+    pub username: String,
     pub password: String,
 }
 
@@ -164,20 +185,91 @@ fn check_password_shape(password: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// The Bahasa Indonesia message for each way a username can be wrong.
+///
+/// The domain crate has no i18n and should not grow one — its `#[error]`
+/// strings are English, for logs. Product text is written here, where the rest
+/// of this file's field messages are.
+pub(super) const fn username_message(err: UsernameError) -> &'static str {
+    match err {
+        UsernameError::TooShort => "Minimal 3 karakter.",
+        UsernameError::TooLong => "Maksimal 30 karakter.",
+        UsernameError::BadCharacter => "Hanya huruf kecil, angka, titik, dan garis bawah.",
+        UsernameError::EdgePunctuation => {
+            "Tidak boleh diawali atau diakhiri titik atau garis bawah."
+        }
+        UsernameError::ConsecutiveDots => "Titik tidak boleh berurutan.",
+    }
+}
+
+/// Canonicalise a username, or fail with a message under the field.
+pub(super) fn check_username(raw: &str) -> Result<String, ApiError> {
+    username::canonicalise(raw).map_err(|err| {
+        ApiError::validation(serde_json::json!({ "username": username_message(err) }))
+    })
+}
+
 /// `POST /auth/register`
 ///
 /// # Errors
 ///
-/// Validation failure, a taken email, or a storage failure.
+/// Validation failure, a taken email or username, or a storage failure.
 pub async fn register(
     State(state): State<AppState>,
-    Json(body): Json<CredentialsRequest>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(body): Json<RegistrationRequest>,
 ) -> Result<ApiResponse<TokensResponse>, ApiError> {
-    check_password_shape(&body.password)?;
-
-    let pair = auth::register(&state.pool, &state.sessions, &body.email, &body.password)
+    // Counted first, before any validation runs. `usecase::auth::register`
+    // hashes the password with argon2 before the uniqueness check ever
+    // touches the database (`usecase/auth.rs::register`), so a throttled
+    // probe must be refused here or it pays that cost anyway. Fails closed,
+    // like the login and lookup limiters: an unreachable Redis means the
+    // bound cannot be enforced, and an unthrottled register is worse than a
+    // brief refusal.
+    let allowed = state
+        .limiter
+        .allow_register(&peer.ip().to_string())
         .await
-        .map_err(to_api_error)?;
+        .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?;
+    if !allowed {
+        return Err(ApiError::too_many_requests());
+    }
+
+    check_password_shape(&body.password)?;
+    let username = check_username(&body.username)?;
+
+    // A reserved name answers exactly as a taken one does — same status, same
+    // body (`tests/auth_flow.rs::a_reserved_username_answers_exactly_like_a_taken_one`).
+    // Reporting it as a validation failure instead would answer 422 where a
+    // taken name answers 409, and that difference is a way to enumerate the
+    // reserved list.
+    //
+    // The response is identical; the TIMING is not, and that is a known,
+    // accepted gap rather than a second guarantee this line makes. This
+    // branch returns before `security::hash_password` runs, so a reserved
+    // name costs well under a millisecond while a taken or available one
+    // costs argon2 (~20ms, per that function's own doc) plus a database round
+    // trip. What leaks through the gap is membership of this twelve-entry
+    // public constant — and `GET /usernames/{name}/availability` (Task 7) is
+    // the endpoint designed to answer exactly that question, at the same
+    // low cost for both reserved and taken. Closing the timing gap here would
+    // not hide anything the availability endpoint does not already publish
+    // on purpose.
+    if username::is_reserved(&username) {
+        return Err(to_api_error(AuthError::UsernameTaken));
+    }
+
+    let pair = auth::register(
+        &state.pool,
+        &state.sessions,
+        auth::Registration {
+            email: &body.email,
+            username: &username,
+            password: &body.password,
+        },
+    )
+    .await
+    .map_err(to_api_error)?;
 
     Ok(ApiResponse::created(pair.into()))
 }
@@ -198,19 +290,22 @@ pub async fn login(
     // Fails closed. An unreachable Redis means the limit cannot be enforced,
     // and an unthrottled argon2 endpoint is a worse outcome than a brief
     // refusal to sign anybody in.
-    let allowed = state
+    let attempt = state
         .limiter
         .allow_login(&peer.ip().to_string(), &body.email)
         .await
         .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?;
 
-    if !allowed {
-        return Err(ApiError::too_many_requests());
+    if let LoginAttempt::Refused {
+        retry_after_seconds,
+    } = attempt
+    {
+        return Err(ApiError::too_many_requests_in(retry_after_seconds));
     }
 
     let pair = auth::login(&state.pool, &state.sessions, &body.email, &body.password)
         .await
-        .map_err(to_api_error)?;
+        .map_err(to_login_error)?;
 
     Ok(ApiResponse::ok(pair.into()))
 }
@@ -232,8 +327,19 @@ pub async fn refresh(
 
 /// `POST /auth/logout`
 ///
-/// Ends the session the presented token belongs to, and no other. Signing out
-/// on a phone should not sign out the tablet.
+/// Ends the session the access token belongs to, and no other. Signing out on
+/// a phone should not sign out the tablet.
+///
+/// The session id comes from the extractor, which resolved it from the token
+/// the caller actually presented — so a client still cannot end a session it
+/// cannot prove it holds, and no refresh token is spent to find out which one
+/// it is. Rotating to discover the session was the old approach, and a rotation
+/// that came back `Reused` or `Invalid` left this handler answering success
+/// having revoked nothing.
+///
+/// A logout against an already-dead session never reaches here: the extractor
+/// refuses it as unauthenticated, exactly as it refuses any other request
+/// carrying a revoked token. Nothing distinguishes the two cases for a caller.
 ///
 /// # Errors
 ///
@@ -241,24 +347,10 @@ pub async fn refresh(
 pub async fn logout(
     State(state): State<AppState>,
     caller: Authenticated,
-    Json(body): Json<RefreshRequest>,
 ) -> Result<ApiResponse<serde_json::Value>, ApiError> {
-    // The session id comes from the refresh token rather than from the
-    // request body: a client must not be able to end a session it cannot
-    // prove it holds.
-    // Anything other than a clean rotation means there is nothing left to
-    // end — already signed out, or a replay. Both answer the same, because
-    // distinguishing them would tell a caller which one it was.
-    if let crate::adapter::redis::session::Rotation::Rotated(pair) = state
-        .sessions
-        .rotate(&body.refresh_token)
+    auth::logout(&state.sessions, caller.user_id, caller.session_id)
         .await
-        .map_err(|err| ApiError::internal(anyhow::anyhow!(err)))?
-    {
-        auth::logout(&state.sessions, caller.user_id, pair.session_id)
-            .await
-            .map_err(to_api_error)?;
-    }
+        .map_err(to_api_error)?;
 
     Ok(ApiResponse::ok(serde_json::json!({ "signed_out": true })))
 }
@@ -266,16 +358,39 @@ pub async fn logout(
 /// Map a use-case failure to a response.
 ///
 /// Every credential failure becomes the same `401`, whatever went wrong
-/// underneath. An unknown email and a wrong password must be externally
-/// identical, or the endpoint tells an attacker which addresses have
-/// accounts.
+/// underneath — an unknown email, a wrong password, and (via `/auth/refresh`)
+/// an expired or replayed token are all [`AuthError::InvalidCredentials`] and
+/// must stay externally identical, or the endpoint tells an attacker which
+/// addresses have accounts. `/auth/login` reports a friendlier message
+/// through [`to_login_error`] instead; the enumeration guarantee lives in the
+/// variant staying one variant, not in which message it renders.
 fn to_api_error(err: AuthError) -> ApiError {
     match err {
         AuthError::InvalidCredentials => ApiError::unauthorized(),
-        AuthError::EmailTaken => ApiError::conflict(),
+        AuthError::EmailTaken => ApiError::conflict_on("email", "Email ini sudah terdaftar."),
+        AuthError::UsernameTaken => {
+            ApiError::conflict_on("username", "Username ini sudah dipakai.")
+        }
         AuthError::Session(inner) => ApiError::internal(anyhow::anyhow!(inner)),
         AuthError::Database(inner) => ApiError::internal(anyhow::anyhow!(inner)),
         AuthError::Password(inner) => ApiError::internal(anyhow::anyhow!(inner)),
+    }
+}
+
+/// Map a login failure to a response.
+///
+/// Identical to [`to_api_error`] except for [`AuthError::InvalidCredentials`]:
+/// `/auth/login` answers "email atau password salah", never "you need to sign
+/// in first" — the message that variant gets everywhere else, including
+/// `/auth/refresh`, where it is exactly right. Telling someone typing their
+/// password wrong that they need to sign in is nonsense; telling someone
+/// whose refresh token expired the same thing is correct. Both messages cover
+/// an unknown email and a wrong password identically, so neither weakens the
+/// enumeration defence.
+fn to_login_error(err: AuthError) -> ApiError {
+    match err {
+        AuthError::InvalidCredentials => ApiError::invalid_credentials(),
+        other => to_api_error(other),
     }
 }
 
@@ -303,12 +418,54 @@ mod tests {
     }
 
     #[test]
+    fn each_username_error_carries_its_own_message() {
+        // Five Bahasa Indonesia strings with zero coverage before this test:
+        // collapsing all five arms to one string, or transposing `TooShort`
+        // and `TooLong`, left every other test green while the product told
+        // somebody who typed two characters "Maksimal 30 karakter." — pinning
+        // uniqueness alone would not catch a transposition, since the five
+        // messages would still be five distinct strings, just on the wrong
+        // variants. Each assertion below pins the exact text per variant.
+        assert_eq!(
+            username_message(UsernameError::TooShort),
+            "Minimal 3 karakter."
+        );
+        assert_eq!(
+            username_message(UsernameError::TooLong),
+            "Maksimal 30 karakter."
+        );
+        assert_eq!(
+            username_message(UsernameError::BadCharacter),
+            "Hanya huruf kecil, angka, titik, dan garis bawah."
+        );
+        assert_eq!(
+            username_message(UsernameError::EdgePunctuation),
+            "Tidak boleh diawali atau diakhiri titik atau garis bawah."
+        );
+        assert_eq!(
+            username_message(UsernameError::ConsecutiveDots),
+            "Titik tidak boleh berurutan."
+        );
+    }
+
+    #[test]
     fn every_credential_failure_looks_the_same_from_outside() {
-        // The enumeration defence. If these ever diverge, an attacker can tell
-        // a registered address from an unregistered one.
+        // The enumeration defence, on the generic mapper `/auth/refresh` (and
+        // `register`/`logout`, which never actually produce this variant)
+        // still use. If this ever diverges by branch, an attacker can tell a
+        // registered address from an unregistered one.
         assert_eq!(
             to_api_error(AuthError::InvalidCredentials).code(),
             crate::shared::i18n::ErrorCode::Unauthorized
+        );
+    }
+
+    #[test]
+    fn login_reports_the_login_specific_credential_message() {
+        // `/auth/login` alone gets the friendlier code — see `to_login_error`.
+        assert_eq!(
+            to_login_error(AuthError::InvalidCredentials).code(),
+            crate::shared::i18n::ErrorCode::InvalidCredentials
         );
     }
 

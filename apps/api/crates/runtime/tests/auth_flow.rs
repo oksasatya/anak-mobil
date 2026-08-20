@@ -16,7 +16,7 @@
 )]
 
 use anakmobil_runtime::adapter::http;
-use anakmobil_runtime::adapter::redis::rate_limit::RateLimiter;
+use anakmobil_runtime::adapter::redis::rate_limit::{RateLimiter, WINDOW};
 use anakmobil_runtime::adapter::redis::session::SessionStore;
 use anakmobil_runtime::platform::state::AppState;
 use axum::body::{Body, to_bytes};
@@ -92,6 +92,12 @@ fn an_email() -> String {
     format!("user-{}@example.com", uuid::Uuid::now_v7())
 }
 
+/// A unique, always-valid username per test run.
+fn a_username() -> String {
+    // Canonical by construction: lowercase hex, no dots, no edges.
+    format!("u{}", &uuid::Uuid::now_v7().simple().to_string()[13..])
+}
+
 /// A unique client address, so one test's attempts do not rate-limit another's.
 fn a_peer() -> SocketAddr {
     let id = uuid::Uuid::now_v7().as_u128();
@@ -149,7 +155,7 @@ async fn register_then_login_then_use_the_token() {
     let created = post(
         &app,
         "/auth/register",
-        json!({"email": email, "password": "kata sandi panjang"}),
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
         peer,
     )
     .await;
@@ -181,7 +187,7 @@ async fn a_password_is_never_echoed_back() {
     let response = post(
         &app,
         "/auth/register",
-        json!({"email": email, "password": password}),
+        json!({"email": email, "username": a_username(), "password": password}),
         peer,
     )
     .await;
@@ -206,7 +212,7 @@ async fn an_unknown_email_and_a_wrong_password_are_indistinguishable() {
     post(
         &app,
         "/auth/register",
-        json!({"email": email, "password": "kata sandi panjang"}),
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
         peer,
     )
     .await;
@@ -230,8 +236,13 @@ async fn an_unknown_email_and_a_wrong_password_are_indistinguishable() {
     assert_eq!(unknown_email.status(), StatusCode::UNAUTHORIZED);
 
     let (a, b) = (json(wrong_password).await, json(unknown_email).await);
-    assert_eq!(a["error"]["code"], b["error"]["code"]);
-    assert_eq!(a["error"]["message"], b["error"]["message"]);
+    assert_eq!(a["error"]["code"], "auth.invalid_credentials");
+    // The whole `error` object — code, message, and details together — not
+    // just the code, so a divergence anywhere in the body is caught.
+    assert_eq!(
+        a["error"], b["error"],
+        "an unknown email and a wrong password must answer byte-identically"
+    );
 }
 
 #[tokio::test]
@@ -240,7 +251,7 @@ async fn a_short_password_is_refused_with_a_field_message() {
     let response = post(
         &app,
         "/auth/register",
-        json!({"email": an_email(), "password": "pendek"}),
+        json!({"email": an_email(), "username": a_username(), "password": "pendek"}),
         a_peer(),
     )
     .await;
@@ -253,18 +264,31 @@ async fn a_short_password_is_refused_with_a_field_message() {
 
 #[tokio::test]
 async fn a_taken_email_is_refused() {
+    // Same email, different usernames — or this proves nothing about which
+    // index fired.
     let app = app!();
     let (email, peer) = (an_email(), a_peer());
-    let body = json!({"email": email, "password": "kata sandi panjang"});
 
     assert_eq!(
-        post(&app, "/auth/register", body.clone(), peer)
-            .await
-            .status(),
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+            peer,
+        )
+        .await
+        .status(),
         StatusCode::CREATED
     );
     assert_eq!(
-        post(&app, "/auth/register", body, peer).await.status(),
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+            peer,
+        )
+        .await
+        .status(),
         StatusCode::CONFLICT
     );
 }
@@ -279,7 +303,7 @@ async fn email_matching_ignores_case() {
     post(
         &app,
         "/auth/register",
-        json!({"email": email, "password": "kata sandi panjang"}),
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
         a_peer(),
     )
     .await;
@@ -304,7 +328,43 @@ async fn logout_stops_the_next_request() {
         post(
             &app,
             "/auth/register",
-            json!({"email": email, "password": "kata sandi panjang"}),
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+            peer,
+        )
+        .await,
+    )
+    .await;
+    let access = body["data"]["access_token"]
+        .as_str()
+        .expect("access token")
+        .to_owned();
+
+    let out = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&access)).await;
+    assert_eq!(out.status(), StatusCode::OK);
+
+    // The same token, one request later.
+    let after = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&access)).await;
+    assert_eq!(
+        after.status(),
+        StatusCode::UNAUTHORIZED,
+        "the access token outlived the logout"
+    );
+}
+
+#[tokio::test]
+async fn logout_revokes_even_when_the_refresh_token_is_already_spent() {
+    // The defect in spec §5. Logout used to rotate the refresh token to find
+    // the session; a rotation that reports Reused or Invalid returned success
+    // and revoked nothing, so somebody could press sign-out, be told it worked,
+    // and still be authenticated a moment later.
+    let app = app!();
+    let (email, peer) = (an_email(), a_peer());
+
+    let body = json(
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
             peer,
         )
         .await,
@@ -319,30 +379,85 @@ async fn logout_stops_the_next_request() {
         .expect("refresh token")
         .to_owned();
 
-    let out = post_with_auth(
-        &app,
-        "/auth/logout",
-        json!({"refresh_token": refresh}),
-        peer,
-        Some(&access),
-    )
-    .await;
-    assert_eq!(out.status(), StatusCode::OK);
+    // Spend the refresh token elsewhere, exactly as an in-flight refresh does.
+    // The access token from the ORIGINAL pair is still live: rotation slides
+    // the session rather than ending it.
+    assert_eq!(
+        post(
+            &app,
+            "/auth/refresh",
+            json!({"refresh_token": refresh}),
+            peer
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
 
-    // The same token, one request later.
-    let after = post_with_auth(
-        &app,
-        "/auth/logout",
-        json!({"refresh_token": "anything"}),
-        peer,
-        Some(&access),
-    )
-    .await;
+    // No body at all — the Authorization header is the whole request.
+    let out = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&access)).await;
+    assert_eq!(out.status(), StatusCode::OK);
+    assert_eq!(json(out).await["data"]["signed_out"], true);
+
+    // The session must actually be gone.
+    let after = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&access)).await;
     assert_eq!(
         after.status(),
         StatusCode::UNAUTHORIZED,
-        "the access token outlived the logout"
+        "logout reported success without revoking the session"
     );
+}
+
+#[tokio::test]
+async fn a_logout_against_a_dead_session_answers_like_a_live_one() {
+    // Distinguishing them would tell a caller which it was.
+    let app = app!();
+    let (email, peer) = (an_email(), a_peer());
+
+    let first = json(
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+            peer,
+        )
+        .await,
+    )
+    .await;
+    let live = first["data"]["access_token"]
+        .as_str()
+        .expect("access token")
+        .to_owned();
+
+    let alive = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&live)).await;
+    let alive_status = alive.status();
+    let alive_body = json(alive).await;
+
+    // A second session, revoked out from under the token before logout runs.
+    let second = json(
+        post(
+            &app,
+            "/auth/login",
+            json!({"email": email, "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await,
+    )
+    .await;
+    let dead = second["data"]["access_token"]
+        .as_str()
+        .expect("access token")
+        .to_owned();
+    post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&dead)).await;
+
+    // Logging out twice with the same token: the second one meets a dead
+    // session. It must be refused as unauthenticated — never a 200 that
+    // pretends, and never a distinct code that says "already signed out".
+    let again = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&dead)).await;
+    assert_eq!(again.status(), StatusCode::UNAUTHORIZED);
+
+    assert_eq!(alive_status, StatusCode::OK);
+    assert_eq!(alive_body["data"]["signed_out"], true);
 }
 
 #[tokio::test]
@@ -355,7 +470,7 @@ async fn refreshing_rotates_and_a_replay_is_refused() {
         post(
             &app,
             "/auth/register",
-            json!({"email": email, "password": "kata sandi panjang"}),
+            json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
             peer,
         )
         .await,
@@ -394,14 +509,7 @@ async fn refreshing_rotates_and_a_replay_is_refused() {
         .as_str()
         .expect("access")
         .to_owned();
-    let after = post_with_auth(
-        &app,
-        "/auth/logout",
-        json!({"refresh_token": "x"}),
-        peer,
-        Some(&orphaned),
-    )
-    .await;
+    let after = post_with_auth(&app, "/auth/logout", json!({}), peer, Some(&orphaned)).await;
     assert_eq!(
         after.status(),
         StatusCode::UNAUTHORIZED,
@@ -412,24 +520,18 @@ async fn refreshing_rotates_and_a_replay_is_refused() {
 #[tokio::test]
 async fn a_request_without_a_token_is_refused() {
     let app = app!();
-    let response = post(
-        &app,
-        "/auth/logout",
-        json!({"refresh_token": "x"}),
-        a_peer(),
-    )
-    .await;
+    let response = post(&app, "/auth/logout", json!({}), a_peer()).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn repeated_failures_from_one_address_are_throttled() {
-    // The reason rate limiting was pulled into this ticket: without it, this
-    // loop is a password-guessing machine and an argon2 CPU sink.
+async fn a_throttled_login_says_how_long_to_wait() {
+    // AM-61's countdown. One aggregate number and nothing else — no attempts
+    // remaining, and no hint about which limiter refused.
     let app = app!();
     let peer = a_peer();
 
-    let mut throttled = false;
+    let mut throttled = None;
     for _ in 0..40 {
         let response = post(
             &app,
@@ -439,13 +541,324 @@ async fn repeated_failures_from_one_address_are_throttled() {
         )
         .await;
         if response.status() == StatusCode::TOO_MANY_REQUESTS {
-            throttled = true;
+            throttled = Some(json(response).await);
             break;
         }
     }
 
+    let body = throttled.expect("40 failed logins from one address were all allowed");
+    assert_eq!(body["error"]["code"], "too_many_requests");
+
+    let wait = body["error"]["details"]["retry_after_seconds"]
+        .as_u64()
+        .expect("retry_after_seconds must be a number");
+    // Deterministic, not merely bounded: this test used a fresh `an_email()`
+    // per attempt, so only the per-IP counter ever trips, and by attempt 21
+    // its remaining TTL is ~898s — never exactly `WINDOW.as_secs()` (900)
+    // unless the aggregation itself is wrong. A `wait > 0 && wait <= 900`
+    // range check is satisfied by the constant 900 regardless of whether the
+    // account limiter's own TTL was ever consulted, which is the oracle this
+    // test exists to catch.
+    assert_eq!(wait, WINDOW.as_secs());
+
+    // Nothing may say which limiter refused, or how many attempts are left.
+    let details = body["error"]["details"].to_string();
+    for leak in ["ip", "account", "remaining", "attempts", "limit"] {
+        assert!(
+            !details.contains(leak),
+            "the 429 detail leaked `{leak}`: {details}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn repeated_registrations_from_one_address_are_eventually_refused() {
+    // Branch-gate finding 3: `/auth/register` had no rate limiter at all, so
+    // argon2 (paid before the uniqueness check even runs — see
+    // `usecase/auth.rs::register`) ran unbounded for anyone scripting a
+    // sweep. `PER_IP_REGISTER` is 20 per window (`adapter/redis/rate_limit.rs`);
+    // 25 iterations from one held-fixed address guarantees a refusal without
+    // hardcoding the exact count.
+    let app = app!();
+    let peer = a_peer();
+
+    let mut throttled = None;
+    for _ in 0..25 {
+        let response = post(
+            &app,
+            "/auth/register",
+            json!({
+                "email": an_email(),
+                "username": a_username(),
+                "password": "kata sandi panjang",
+            }),
+            peer,
+        )
+        .await;
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
+            throttled = Some(json(response).await);
+            break;
+        }
+    }
+
+    let body = throttled.expect("25 registrations from one address were all allowed through");
+    assert_eq!(body["error"]["code"], "too_many_requests");
+
+    // Mirrors the availability endpoint's contract (`profile_flow.rs`'s
+    // `repeated_lookups_from_one_address_are_eventually_refused`), not
+    // login's: a bool collapsed from one `allow()` call publishes no wait.
     assert!(
-        throttled,
-        "40 failed logins from one address were all allowed through"
+        body["error"].get("details").is_none(),
+        "the register 429 must carry no details, unlike login's: {body}"
     );
+}
+
+#[tokio::test]
+async fn a_successful_login_carries_no_retry_hint() {
+    let app = app!();
+    let (email, peer) = (an_email(), a_peer());
+
+    post(
+        &app,
+        "/auth/register",
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+        peer,
+    )
+    .await;
+
+    let body = json(
+        post(
+            &app,
+            "/auth/login",
+            json!({"email": email, "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await,
+    )
+    .await;
+    assert!(body.get("error").is_none());
+    assert!(body["data"]["access_token"].is_string());
+    // The test's own name: today nothing stops a future change from adding
+    // `retry_after_seconds` to a *successful* payload too.
+    assert!(!body.to_string().contains("retry_after"));
+}
+
+#[tokio::test]
+async fn a_taken_username_is_reported_as_a_username_not_an_email() {
+    // The defect: `23505` was mapped to EmailTaken with a comment saying a
+    // unique violation "can only be the email index". Adding the username index
+    // made that false, and somebody would be told to change an address that is
+    // perfectly free.
+    let app = app!();
+    let username = a_username();
+
+    assert_eq!(
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": an_email(), "username": username, "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await
+        .status(),
+        StatusCode::CREATED
+    );
+
+    // A different address, the same name.
+    let clash = post(
+        &app,
+        "/auth/register",
+        json!({"email": an_email(), "username": username, "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+    assert_eq!(clash.status(), StatusCode::CONFLICT);
+
+    let body = json(clash).await;
+    assert_eq!(body["error"]["code"], "conflict");
+    assert!(
+        body["error"]["details"]["username"].is_string(),
+        "the collision must name the username: {body}"
+    );
+    assert!(
+        body["error"]["details"].get("email").is_none(),
+        "a username collision must not be reported against the email: {body}"
+    );
+}
+
+#[tokio::test]
+async fn a_taken_email_names_the_email() {
+    let app = app!();
+    let email = an_email();
+
+    post(
+        &app,
+        "/auth/register",
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+
+    let clash = post(
+        &app,
+        "/auth/register",
+        json!({"email": email, "username": a_username(), "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+    assert_eq!(clash.status(), StatusCode::CONFLICT);
+
+    let body = json(clash).await;
+    assert!(body["error"]["details"]["email"].is_string(), "{body}");
+    assert!(body["error"]["details"].get("username").is_none(), "{body}");
+}
+
+#[tokio::test]
+async fn a_username_is_canonicalised_before_it_is_stored() {
+    // Uppercase in, lowercase held. The second registration proves the first
+    // one claimed the canonical form rather than the typed form.
+    let app = app!();
+    let username = a_username();
+
+    assert_eq!(
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": an_email(), "username": username.to_uppercase(), "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await
+        .status(),
+        StatusCode::CREATED
+    );
+
+    assert_eq!(
+        post(
+            &app,
+            "/auth/register",
+            json!({"email": an_email(), "username": username, "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT,
+        "`BUDI` and `budi` must be one name"
+    );
+}
+
+#[tokio::test]
+async fn a_malformed_username_is_a_field_level_validation_failure() {
+    let app = app!();
+
+    for bad in [
+        "ab",
+        ".budi",
+        "budi.",
+        "budi..s",
+        "budi-santoso",
+        "budi santoso",
+    ] {
+        let response = post(
+            &app,
+            "/auth/register",
+            json!({"email": an_email(), "username": bad, "password": "kata sandi panjang"}),
+            a_peer(),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "`{bad}` should be refused"
+        );
+
+        let body = json(response).await;
+        assert_eq!(body["error"]["code"], "validation_failed");
+        assert!(
+            body["error"]["details"]["username"].is_string(),
+            "`{bad}` gave no message under the username field: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_reserved_username_answers_exactly_like_a_taken_one() {
+    // The guard rail from the spec: nothing may distinguish reserved from taken,
+    // or the endpoint becomes a way to enumerate the reserved list.
+    let app = app!();
+    let taken = a_username();
+
+    post(
+        &app,
+        "/auth/register",
+        json!({"email": an_email(), "username": taken, "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+
+    let on_taken = post(
+        &app,
+        "/auth/register",
+        json!({"email": an_email(), "username": taken, "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+    let on_reserved = post(
+        &app,
+        "/auth/register",
+        json!({"email": an_email(), "username": "admin", "password": "kata sandi panjang"}),
+        a_peer(),
+    )
+    .await;
+
+    assert_eq!(on_taken.status(), on_reserved.status());
+
+    let (a, b) = (json(on_taken).await, json(on_reserved).await);
+    assert_eq!(
+        a["error"], b["error"],
+        "reserved and taken must be identical"
+    );
+
+    // Asserting the 409 above does not close this: without the `is_reserved`
+    // short-circuit in `http::auth::register`, "admin" would genuinely
+    // register on this first run (it is not yet taken), this assertion would
+    // catch it here, but the two assertions above would ALSO have kept
+    // passing on every run after the first — a real unique-constraint
+    // conflict producing the identical 409 body for the wrong reason. Only a
+    // direct check of the row itself catches the mutation on every run.
+    let pool = anakmobil_runtime::adapter::postgres::connect(
+        &std::env::var("DATABASE_URL").expect("DATABASE_URL, required by app!() above"),
+    )
+    .expect("connecting to postgres");
+    let mut conn = pool.acquire().await.expect("acquiring a connection");
+    assert!(
+        !anakmobil_runtime::adapter::postgres::user_repo::username_exists(&mut conn, "admin")
+            .await
+            .expect("querying users"),
+        "the reserved name `admin` must never actually be inserted"
+    );
+}
+
+#[tokio::test]
+async fn login_still_takes_only_an_email_and_a_password() {
+    // The shipped contract. Splitting the DTO exists so that adding a username
+    // to registration cannot make `/auth/login` demand one.
+    let app = app!();
+    let (email, password) = (an_email(), "kata sandi panjang");
+
+    post(
+        &app,
+        "/auth/register",
+        json!({"email": email, "username": a_username(), "password": password}),
+        a_peer(),
+    )
+    .await;
+
+    let response = post(
+        &app,
+        "/auth/login",
+        json!({"email": email, "password": password}),
+        a_peer(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
 }

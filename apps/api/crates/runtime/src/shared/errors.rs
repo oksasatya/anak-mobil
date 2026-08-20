@@ -31,8 +31,8 @@ use crate::shared::response::{ErrorBody, error_response};
 #[derive(Debug)]
 pub struct ApiError {
     code: ErrorCode,
-    /// Field-level detail for a validation failure. Reaches the client, so it
-    /// carries only what the client supplied — never a cause.
+    /// Detail the client can act on. Reaches the client, so it carries only
+    /// what the client supplied or a value we chose to publish — never a cause.
     details: Option<serde_json::Value>,
     /// The underlying cause. Logged, never serialised. Not `pub`, and there
     /// is no accessor, so no future handler can route it into a body.
@@ -58,6 +58,17 @@ impl ApiError {
         Self::bare(ErrorCode::Unauthorized)
     }
 
+    /// A login attempt refused for lack of matching credentials.
+    ///
+    /// Distinct from [`Self::unauthorized`] only in the message it renders —
+    /// "email atau password salah" is right for `/auth/login`, and nonsense
+    /// for `/auth/refresh`'s expired-token case, which keeps
+    /// [`Self::unauthorized`]. See [`ErrorCode::InvalidCredentials`].
+    #[must_use]
+    pub const fn invalid_credentials() -> Self {
+        Self::bare(ErrorCode::InvalidCredentials)
+    }
+
     #[must_use]
     pub const fn forbidden() -> Self {
         Self::bare(ErrorCode::Forbidden)
@@ -68,9 +79,39 @@ impl ApiError {
         Self::bare(ErrorCode::Conflict)
     }
 
+    /// 409 that names the field that collided.
+    ///
+    /// Registration inevitably reveals that an address or a name is taken —
+    /// there is no way to refuse a duplicate without saying so. Naming which of
+    /// the two it was does not widen that, and not naming it sends somebody to
+    /// change the wrong field. This has no bearing on `/auth/login`, where an
+    /// unknown email and a wrong password stay indistinguishable.
+    #[must_use]
+    pub fn conflict_on(field: &'static str, message: &'static str) -> Self {
+        Self {
+            code: ErrorCode::Conflict,
+            details: Some(serde_json::json!({ field: message })),
+            source: None,
+        }
+    }
+
     #[must_use]
     pub const fn too_many_requests() -> Self {
         Self::bare(ErrorCode::TooManyRequests)
+    }
+
+    /// 429 that says how long to wait.
+    ///
+    /// One aggregate number. It never names which limiter refused and never
+    /// reports attempts remaining — see `adapter::redis::rate_limit::refusal`
+    /// for why the distinction is the whole safety argument.
+    #[must_use]
+    pub fn too_many_requests_in(seconds: u64) -> Self {
+        Self {
+            code: ErrorCode::TooManyRequests,
+            details: Some(serde_json::json!({ "retry_after_seconds": seconds })),
+            source: None,
+        }
     }
 
     /// 429 for a daily allowance rather than a rate limiter.
@@ -127,7 +168,7 @@ pub const fn status_for(code: ErrorCode) -> StatusCode {
     match code {
         ErrorCode::NotFound => StatusCode::NOT_FOUND,
         ErrorCode::ValidationFailed => StatusCode::UNPROCESSABLE_ENTITY,
-        ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
+        ErrorCode::Unauthorized | ErrorCode::InvalidCredentials => StatusCode::UNAUTHORIZED,
         ErrorCode::Forbidden => StatusCode::FORBIDDEN,
         ErrorCode::Conflict => StatusCode::CONFLICT,
         ErrorCode::TooManyRequests | ErrorCode::PartsDailyLimit => StatusCode::TOO_MANY_REQUESTS,
@@ -189,6 +230,7 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::i18n;
     use axum::body::to_bytes;
     use serde_json::{Value, json};
 
@@ -201,23 +243,30 @@ mod tests {
 
     #[test]
     fn every_code_maps_to_a_sensible_status() {
-        let cases = [
+        // Expected status per code, independent of `status_for`'s own match —
+        // this is the spec `status_for` is checked against, not a restatement
+        // of it. Iterated against `i18n::ALL` (added after the review — ledger
+        // 50) rather than trusting this list to enumerate every variant on its
+        // own: this exact array had silently omitted `PartsDailyLimit`.
+        let expected = [
             (ErrorCode::NotFound, 404),
             (ErrorCode::ValidationFailed, 422),
             (ErrorCode::Unauthorized, 401),
+            (ErrorCode::InvalidCredentials, 401),
             (ErrorCode::Forbidden, 403),
             (ErrorCode::Conflict, 409),
             (ErrorCode::TooManyRequests, 429),
+            (ErrorCode::PartsDailyLimit, 429),
             (ErrorCode::Internal, 500),
             (ErrorCode::ServiceUnavailable, 503),
         ];
 
-        for (code, expected) in cases {
-            assert_eq!(
-                status_for(code).as_u16(),
-                expected,
-                "wrong status for {code}"
-            );
+        for code in i18n::ALL {
+            let &(_, want) = expected
+                .iter()
+                .find(|(c, _)| *c == code)
+                .unwrap_or_else(|| panic!("{code} has no expected status in this test"));
+            assert_eq!(status_for(code).as_u16(), want, "wrong status for {code}");
         }
     }
 

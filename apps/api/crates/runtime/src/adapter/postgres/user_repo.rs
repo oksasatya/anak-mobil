@@ -39,24 +39,36 @@ pub async fn find_credentials(
     .await
 }
 
+/// An account on its way to being created.
+///
+/// A struct rather than four positional arguments: three adjacent `&str` are
+/// exactly the shape that gets swapped at a call site and still compiles.
+/// `RoleChangeRow` below is the same fix for the same reason.
+pub struct NewUser<'a> {
+    pub id: Uuid,
+    pub email: &'a str,
+    pub username: &'a str,
+    pub password_hash: &'a str,
+}
+
 /// Create an account.
 ///
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails, including a unique violation
-/// when the email is already registered — which the caller must translate
-/// without revealing that the address exists.
-pub async fn insert(
-    conn: &mut PgConnection,
-    id: Uuid,
-    email: &str,
-    password_hash: &str,
-) -> Result<(), sqlx::Error> {
+/// on either `users_email_key` or `users_username_key` — which the caller must
+/// translate by constraint name, because the two send somebody to different
+/// fields.
+pub async fn insert(conn: &mut PgConnection, user: NewUser<'_>) -> Result<(), sqlx::Error> {
     sqlx::query!(
-        r#"INSERT INTO users (id, email, password_hash) VALUES ($1, $2::citext, $3)"#,
-        id,
-        email,
-        password_hash
+        r#"
+        INSERT INTO users (id, email, username, password_hash)
+        VALUES ($1, $2::citext, $3::citext, $4)
+        "#,
+        user.id,
+        user.email,
+        user.username,
+        user.password_hash
     )
     .execute(conn)
     .await
@@ -263,4 +275,92 @@ pub async fn find_id_by_email(
     sqlx::query_scalar!(r#"SELECT id FROM users WHERE email = $1::citext"#, email)
         .fetch_optional(conn)
         .await
+}
+
+/// An account as the app's bootstrap needs it.
+///
+/// Deliberately a different struct from [`Credentials`]: that one carries the
+/// password hash and is deliberately not `Serialize`. Keeping the two apart is
+/// what makes it impossible to hand a hash to a response by widening a query.
+#[derive(Debug, Clone)]
+pub struct Profile {
+    pub id: Uuid,
+    pub email: String,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+    /// Derived, never stored. A person who has a car has finished onboarding,
+    /// and a stored completion flag is a second source of truth that can
+    /// disagree with the first.
+    pub has_vehicles: bool,
+}
+
+/// This account's profile and whether it has any car.
+///
+/// One query rather than two. The `::text` casts are required: `email` and
+/// `username` are `CITEXT`, and sqlx has no mapping for it — without the cast
+/// the macro fails on an unknown type rather than at runtime.
+///
+/// Complexity: `O(log n)` — a primary-key lookup plus an index probe into
+/// `vehicles_owner_position_idx`, which leads on `owner_id`.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn profile_of(conn: &mut PgConnection, id: Uuid) -> Result<Option<Profile>, sqlx::Error> {
+    sqlx::query_as!(
+        Profile,
+        r#"
+        SELECT
+            u.id,
+            u.email::text        AS "email!",
+            u.username::text     AS "username?",
+            u.display_name       AS "display_name?",
+            EXISTS(SELECT 1 FROM vehicles v WHERE v.owner_id = u.id) AS "has_vehicles!"
+        FROM users u
+        WHERE u.id = $1
+        "#,
+        id
+    )
+    .fetch_optional(conn)
+    .await
+}
+
+/// Is this canonical username already held?
+///
+/// `CITEXT`, so the comparison is case-insensitive in the database rather than
+/// in whichever caller remembered to lowercase — the same reason `email` is.
+///
+/// Complexity: `O(log n)` — an index probe into `users_username_key`.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn username_exists(conn: &mut PgConnection, username: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM users WHERE username = $1::citext)"#,
+        username
+    )
+    .fetch_one(conn)
+    .await
+    .map(|found| found.unwrap_or(false))
+}
+
+/// Write the display name. Already trimmed and length-checked by the caller.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the query fails.
+pub async fn set_display_name(
+    conn: &mut PgConnection,
+    id: Uuid,
+    display_name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"UPDATE users SET display_name = $2 WHERE id = $1"#,
+        id,
+        display_name
+    )
+    .execute(conn)
+    .await
+    .map(drop)
 }
