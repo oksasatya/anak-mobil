@@ -194,12 +194,23 @@ paragraph would reasonably read it as an oversight.
 
 The guard rails that make it defensible:
 
-- The availability endpoint is rate-limited like any other unauthenticated
-  endpoint.
-- Taken and reserved answer **identically**. `admin`, `api`, `me`, `about`,
-  `support`, `help`, `login`, `register`, `settings`, `profile`, `new`, `edit`,
-  and the platform's own names are unavailable, and nothing distinguishes them
-  from a name somebody holds.
+- The availability endpoint is rate-limited, the same discipline every other
+  unauthenticated endpoint that pays real per-request cost carries: `/auth/login`
+  throttles by IP and by account, and `/auth/register` throttles by IP —
+  both because they run argon2 before anything else can refuse the request.
+- Taken and reserved answer **identically**. `admin`, `api`, `about`, `support`,
+  `help`, `login`, `register`, `settings`, `profile`, `new`, `edit`, and the
+  platform's own names are unavailable, and nothing distinguishes them from a
+  name somebody holds.
+
+  **Twelve names, not thirteen — `me` is deliberately absent.** This paragraph
+  originally listed it. It cannot be reserved, because `me` is two characters and
+  the minimum length is three, so `canonicalise("me")` fails before the reserved
+  check is ever reached — `GET /usernames/me/availability` answers
+  `422 {"username":"Minimal 3 karakter."}`. Listing it would be dead weight, and
+  it would break the domain crate's own invariant that every reserved name is
+  itself a valid username. Nothing is lost: the length floor already makes `me`
+  unclaimable, so `/@me` can never collide with an account.
 - The endpoint never accepts, returns, or is correlated with an email or any
   account state.
 
