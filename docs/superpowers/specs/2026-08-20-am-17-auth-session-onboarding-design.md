@@ -160,9 +160,22 @@ both — it reads `session_id` at line 238 and `user_id` at line 241 — and the
 change is to stop discarding it. No new round trip, no new key, no schema.
 
 Logout then revokes that session directly and never rotates a refresh token to
-find it. A logout against an already-dead session answers exactly as one
-against a live session, because distinguishing them tells a caller which it
-was.
+find it.
+
+**Corrected 2026-08-20, during planning.** An earlier draft of this paragraph
+said "a logout against an already-dead session answers exactly as one against a
+live session". That is unsatisfiable and was wrong: once the route is gated by
+`Authenticated`, a revoked token cannot authenticate at all, so a dead-session
+logout is a 401 and a live one is a 200 — the extractor answers before the
+handler is ever reached. The property actually worth holding, and the one the
+implementation must satisfy, is the weaker and achievable one:
+
+> Nothing distinguishes a logout carrying a dead token from **any other
+> request** carrying a dead token.
+
+Logout is not special-cased into leaking whether that particular session once
+existed, whether it was revoked a second ago or a week ago, or whether the
+token was ever real. It is refused exactly as `GET /vehicles` would refuse it.
 
 This touches an extractor used by roughly thirty routes, so it carries a
 correspondingly careful review. It is a type-level addition — no route's
@@ -404,3 +417,31 @@ writing this.
 call later — whether the aha screen's counters get an endpoint before launch,
 and whether existing accounts (none today) get a username claim flow or a
 backfill.
+
+## Corrections made after the four plans were written
+
+Planning found four things this document got wrong or left open. They are fixed
+above and listed here so the change is visible rather than silent.
+
+1. **The logout-uniformity sentence was unsatisfiable** — corrected in place,
+   with the achievable property stated instead.
+2. **The frozen client contract had no way to *start* a session.** `signIn` was
+   missing entirely: the contract could read a session and end one, and nothing
+   could begin one, which both auth screens need. Added, owned by Plan A.
+3. **A taken email or username was indistinguishable from a server fault.** The
+   client error taxonomy had no path for a collision, so "email ini sudah
+   terdaftar" would have surfaced as "Ada gangguan di server" and broken AM-50
+   AC3. Collisions are 409 with `error.details` naming the field, mapped
+   client-side to a validation error on that field.
+4. **`refreshMe` was missing**, and its absence hides a trap worth recording:
+   after `POST /vehicles` the cached `me.hasVehicles` is still `false`, so
+   navigating before the refresh resolves bounces the person back into the
+   wizard they just finished — while `hasVehicles` must be *read* before the
+   refresh to decide between the aha screen and the garage.
+
+Two further hazards were found in the database layer and belong here because
+they are properties of this schema, not of any one plan: **`citext` overloads
+`~` to be case-insensitive**, so a `CHECK` constraint written the obvious way
+would accept `BUDI` as a valid lowercase username unless the column is cast
+with `::text`; and **sqlx cannot map `citext` to `String`**, so the first query
+that reads one needs an explicit cast or the macro fails on an unknown type.
