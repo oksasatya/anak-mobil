@@ -49,7 +49,7 @@ parts catalog. Everything AI is not built yet.
 |---|---|---|
 | `GET /healthz` | always `200` | nothing — no I/O at all |
 | `GET /readyz` | `200` or `503` | Postgres and Redis, concurrently, 2s each |
-| `POST /auth/register` | `201` | email is free, password ≥ 8 characters |
+| `POST /auth/register` | `201` | email is free, password ≥ 8 characters, username well-formed, free, and not reserved |
 | `POST /auth/login` | `200` | rate limit, then argon2id |
 | `POST /auth/refresh` | `200` | rotates, and detects a replay |
 | `POST /auth/logout` | `200` | ends that session only |

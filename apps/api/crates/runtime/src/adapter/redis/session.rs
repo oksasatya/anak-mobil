@@ -175,6 +175,19 @@ const ROTATE: &str = r"
     return {'invalid'}
 ";
 
+/// Who a live access token belongs to, and which session it came from.
+///
+/// The session id costs nothing to return: [`SessionStore::authenticate`] has
+/// always had to read `at:{digest} -> session_id` before it could read
+/// `sess:{session_id} -> user_id`, and used to throw the first hop away. Logout
+/// then had to rediscover the session by rotating a refresh token, which is how
+/// it came to report success while revoking nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Resolved {
+    pub user_id: Uuid,
+    pub session_id: Uuid,
+}
+
 /// Redis-backed session storage.
 #[derive(Clone)]
 pub struct SessionStore {
@@ -224,7 +237,8 @@ impl SessionStore {
         })
     }
 
-    /// Resolve an access token to the account it belongs to.
+    /// Resolve an access token to the account it belongs to, and the session
+    /// it came from.
     ///
     /// Both the token mapping and the session must exist. That second check is
     /// what makes logout instant.
@@ -232,15 +246,26 @@ impl SessionStore {
     /// # Errors
     ///
     /// [`SessionError::Redis`] when the store is unreachable.
-    pub async fn authenticate(&self, access: &str) -> Result<Option<Uuid>, SessionError> {
+    pub async fn authenticate(&self, access: &str) -> Result<Option<Resolved>, SessionError> {
         let mut conn = self.redis.clone();
 
-        let Some(session_id): Option<String> = conn.get(access_key(access)).await? else {
+        let Some(raw_session): Option<String> = conn.get(access_key(access)).await? else {
             return Ok(None);
         };
-        let user_id: Option<String> = conn.get(format!("sess:{session_id}")).await?;
+        let Ok(session_id) = Uuid::parse_str(&raw_session) else {
+            return Ok(None);
+        };
+        let Some(raw_user): Option<String> = conn.get(session_key(session_id)).await? else {
+            return Ok(None);
+        };
+        let Ok(user_id) = Uuid::parse_str(&raw_user) else {
+            return Ok(None);
+        };
 
-        Ok(user_id.and_then(|id| Uuid::parse_str(&id).ok()))
+        Ok(Some(Resolved {
+            user_id,
+            session_id,
+        }))
     }
 
     /// Exchange a refresh token for a new pair.

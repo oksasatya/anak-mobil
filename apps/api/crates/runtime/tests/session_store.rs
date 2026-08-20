@@ -35,12 +35,15 @@ async fn a_new_session_authenticates() {
     let user = Uuid::now_v7();
 
     let pair = store.create(user).await.expect("creating a session");
+    let resolved = store
+        .authenticate(&pair.access)
+        .await
+        .expect("authenticating")
+        .expect("a live session");
+    assert_eq!(resolved.user_id, user);
     assert_eq!(
-        store
-            .authenticate(&pair.access)
-            .await
-            .expect("authenticating"),
-        Some(user)
+        resolved.session_id, pair.session_id,
+        "the session id must survive the walk, or logout has to rediscover it"
     );
 }
 
@@ -93,7 +96,11 @@ async fn rotation_invalidates_the_old_refresh() {
     );
     assert_ne!(second.access, first.access);
     assert_eq!(
-        store.authenticate(&second.access).await.expect("new token"),
+        store
+            .authenticate(&second.access)
+            .await
+            .expect("new token")
+            .map(|resolved| resolved.user_id),
         Some(user)
     );
 }
