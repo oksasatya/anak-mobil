@@ -40,7 +40,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
         ds-build ds-check fe-dev fe-build fe-preview fe-check \
-        mb-check mb-reverse mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
+        mb-check mb-test mb-reverse mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
 
 # Load .env and hand every value to the recipes below.
 #
@@ -268,9 +268,25 @@ fe-check: ds-check fmt-check ## Type-check, format-check, and build the landing 
 # mb-run-* build to a real device and need the owner's Xcode/Android Studio; they
 # cannot run in CI, which only runs mb-check.
 
-mb-check: fmt-check ## Format-check, type-check, and lint the mobile app
+mb-check: fmt-check ## Format-check, type-check, lint, and test the mobile app
 	bun run --filter $(MOBILE) check
+	bun run --filter $(MOBILE) test
 	@echo "mobile gate green"
+
+# Also runnable on its own, for the fast loop while editing the session layer.
+#
+# These tests are part of `mb-check` and part of CI, and that was a deliberate
+# decision rather than a default. The session layer's failure mode is every
+# session on every device being revoked, and its guards are *ordering*
+# properties — which `tsc --noEmit` and `expo lint` cannot see at all. Before
+# this ran in the gate, every one of the sixteen fixes hardening that layer
+# could be deleted, one line at a time, with CI still green.
+#
+# Each assertion was verified by the reverse of TDD: delete the guard, watch it
+# go red, restore it. A test that stays green with its guard deleted is worse
+# than no test, because it looks like protection.
+mb-test: ## Run the mobile app's runnable session-layer tests
+	bun run --filter $(MOBILE) test
 
 # Android's `localhost` is the device, not this Mac, so the app cannot reach the
 # API without a bridge. `adb reverse` forwards a device port back to the host,
