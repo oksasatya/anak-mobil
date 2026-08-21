@@ -31,6 +31,13 @@ the last of the four and assumes all three have landed.
 
 ---
 
+> **Corrected 2026-08-21 while Plan B ran.** Import snippets in this file pointed at
+> `@/shared/session` / `@/shared/api` / `@/shared/vehicle`. **None of those module paths
+> exists** — Plan A ships one barrel, `apps/mobile/src/shared/index.ts`, and its own header
+> says Plans B/C/D import from `@/shared` and from nowhere else. Plan B's Task 6 hit this
+> and its writer caught it; the same error was waiting here. All such imports now read
+> `@/shared`.
+
 ## Global Constraints
 
 Every task's requirements implicitly include this section.
@@ -447,7 +454,7 @@ Create `apps/mobile/src/features/vehicle/catalog.ts`:
 
 ```ts
 import type { AmSelectOption } from "@/components/input";
-import { apiRequest } from "@/shared/api";
+import { apiRequest } from "@/shared";
 import { useQuery } from "@tanstack/react-query";
 
 import type { CatalogEntry, Generation, Variant } from "./types";
@@ -538,7 +545,7 @@ export function yearOptions(
 Create `apps/mobile/src/features/vehicle/createVehicle.ts`:
 
 ```ts
-import { apiRequest, type ApiError } from "@/shared/api";
+import { apiRequest, type ApiError } from "@/shared";
 import { useMutation } from "@tanstack/react-query";
 
 export interface CreateVehicleInput {
@@ -1157,8 +1164,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmAvatar, AmCard } from "@/components/display";
 import { AmButton, AmTextField } from "@/components/input";
 import { useDraft } from "@/features/onboarding/draft";
-import { apiRequest, type ApiError } from "@/shared/api";
-import { useSession, type Me } from "@/shared/session";
+import { apiRequest, type ApiError } from "@/shared";
+import { useSession, type Me } from "@/shared";
 import { useTheme } from "@/theme";
 
 const MIN_NAME = 2;
@@ -1416,7 +1423,7 @@ import {
 } from "@/features/vehicle/catalog";
 import { describedAsFrom, useCreateVehicle } from "@/features/vehicle/createVehicle";
 import { VehiclePhotoPlaceholder } from "@/features/vehicle/VehiclePhotoPlaceholder";
-import { setActiveVehicleId, useSession } from "@/shared/session";
+import { setActiveVehicleId, useSession } from "@/shared";
 import { useTheme } from "@/theme";
 
 export default function VehicleWizard() {

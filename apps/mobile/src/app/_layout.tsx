@@ -7,7 +7,9 @@ import {
 } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { View } from "react-native";
 
+import { AmBrandLockup } from "@/components/display";
 import { AmGround } from "@/components/material";
 import { ToastProvider } from "@/components/state";
 import { queryClient, useBootstrap } from "@/shared";
@@ -43,19 +45,24 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 // AmGround so the toast renders above the ground but below nothing else.
 export default function RootLayout() {
   const fontsReady = useAppFonts();
-  // The splash screen used to hide as soon as fonts were ready; it must now
-  // hold until the session resolves too, or the welcome screen flashes before
-  // useBootstrap has had a chance to land on the garage.
   const sessionReady = useBootstrap();
-  const ready = fontsReady && sessionReady;
   const [forceTint, setForceTint] = useState(false);
   const capability = useMemo(() => ({ forceTint, setForceTint }), [forceTint]);
 
+  // Hide the NATIVE splash as soon as the fonts are ready, and carry the wait
+  // in-app from there.
+  //
+  // It used to hold until the session resolved as well, so a cold start with a
+  // stored session sat on a bare mark for the length of a `/me` round trip —
+  // and the native splash cannot say anything: it is one static PNG with no
+  // wordmark and no way to add one without a new asset. Fonts must land first
+  // or the wordmark would draw in the system face and reflow when Inter
+  // arrives, which is the exact flash `preventAutoHideAsync` exists to stop.
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
-  }, [ready]);
+    if (fontsReady) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsReady]);
 
-  if (!ready) return null;
+  if (!fontsReady) return null;
 
   return (
     <ThemeProvider>
@@ -63,18 +70,43 @@ export default function RootLayout() {
         <CapabilityControlContext.Provider value={capability}>
           <AmGround>
             <ToastProvider>
-              <TransparentNavigationTheme>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: "transparent" },
-                  }}
-                />
-              </TransparentNavigationTheme>
+              {sessionReady ? (
+                <TransparentNavigationTheme>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: "transparent" },
+                    }}
+                  />
+                </TransparentNavigationTheme>
+              ) : (
+                <LaunchView />
+              )}
             </ToastProvider>
           </AmGround>
         </CapabilityControlContext.Provider>
       </QueryClientProvider>
     </ThemeProvider>
+  );
+}
+
+/**
+ * What the app shows while the session resolves.
+ *
+ * It continues the native splash rather than replacing it: same graphite
+ * ground, same mark, same 76pt width, same centre — so the only thing that
+ * changes at the handoff is that the wordmark appears. The native splash
+ * carries no wordmark and cannot be given one without a new asset, which is
+ * why the brand's own name never used to be on screen at launch at all.
+ *
+ * No spinner. There is nothing here a person can act on, the wait is normally
+ * one round trip, and a spinner under a logo reads as "something is wrong"
+ * rather than "one moment".
+ */
+function LaunchView() {
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <AmBrandLockup variant="launch" animate />
+    </View>
   );
 }

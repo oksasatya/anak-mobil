@@ -38,12 +38,18 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   ios: {
     bundleIdentifier: APP_ID[VARIANT],
-    icon: "./assets/expo.icon",
+    // No `icon` override here on purpose: it used to point at
+    // `./assets/expo.icon`, which is Expo's OWN default icon bundle — literally
+    // `expo-symbol.svg` on Expo's blue automatic gradient — so the app shipped
+    // with the stock Expo logo on the home screen. Falling through to the root
+    // `icon` uses the real brand mark instead.
   },
   android: {
     package: APP_ID[VARIANT],
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      // brand.800. The adaptive foreground/background images below are derived
+      // from the real brand mark; this is the fallback fill behind them.
+      backgroundColor: "#1D232A",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -59,9 +65,19 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        backgroundColor: "#208AEF",
-        image: "./assets/images/splash-icon.png",
-        imageWidth: 76,
+        backgroundColor: "#0F141A",
+        // The REAL brand mark, not `splash-icon.png` — that file is a leftover
+        // chevron placeholder and is not the AnakMobil logo at all. This is a
+        // build-time copy of `@anakmobil/assets/img/favicon-dark.png` (the
+        // dark-ground variant, matching the background above): an Expo config
+        // plugin resolves asset paths inside the app directory, so it cannot
+        // import from the workspace package the way `AmBrandLockup` does.
+        // Transparent — the tile is stripped, so the mark floats on the
+        // background colour above instead of sitting in a dark square. Same
+        // file and same 88pt width the in-app launch view uses, so the mark
+        // does not move or change when one hands over to the other.
+        image: "./assets/images/brand-mark.png",
+        imageWidth: 88,
       },
     ],
     "expo-secure-store",

@@ -46,7 +46,27 @@ export function AmButton({
     // §42: destructive uses semantic danger, never orange.
     destructive: { background: theme.color.semantic.danger, label: theme.color.onGraphite },
   };
-  const fill = fills[variant];
+  // A DISABLED button is re-coloured, not faded.
+  //
+  // The blanket `opacity: 0.45` this replaced worked on the graphite variants
+  // — white on graphite survives being halved — but it made `accent` unusable:
+  // `#ED491C` at 45% over the graphite ground is a muddy brown, and its label
+  // is `onAccent` (graphite-950, near black), which at the same opacity is
+  // barely legible on it. That combination is reachable on the registration
+  // screen the moment the form is incomplete, which is the FIRST thing anyone
+  // sees there. `docs/design.md` specifies no disabled treatment, so the
+  // opacity was an implementer's choice rather than committed spec.
+  //
+  // `loading` deliberately does NOT take this path: a button mid-request
+  // should still look like itself, with a spinner, not go grey as though it
+  // had been switched off.
+  const fill = disabled
+    ? {
+        background: theme.color.surfaceSubtle,
+        label: theme.color.textTertiary,
+        border: theme.color.border,
+      }
+    : fills[variant];
 
   return (
     <Pressable
@@ -66,7 +86,8 @@ export function AmButton({
           borderColor: fill.border,
           // No glow: §50 bans constant glowing orange effects, and the first
           // mockup of this design violated it. Press is opacity only.
-          opacity: inert ? 0.45 : pressed ? 0.82 : 1,
+          // Press and loading are opacity; disabled is the re-colour above.
+          opacity: loading ? 0.82 : pressed ? 0.82 : 1,
         },
         style,
         // After `style`, not before: a caller's style must never be able to
