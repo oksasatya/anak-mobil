@@ -1,6 +1,6 @@
 import { fetchMe } from "@/shared/api/me";
 import { startPersistence } from "@/shared/api/queryClient";
-import { writeSession } from "@/shared/session/secure";
+import { readSession, writeSession } from "@/shared/session/secure";
 import { setSignedIn } from "@/shared/session/store";
 import { clearActiveVehicle } from "@/shared/vehicle/activeVehicle";
 
@@ -67,6 +67,63 @@ export async function signIn(tokens: {
     access: tokens.access_token,
     refresh: tokens.refresh_token,
   });
+
+  const user = await fetchMe();
+  await startPersistence(user.id).catch(() => {});
+  setSignedIn(user);
+}
+
+/**
+ * Finish a sign-in whose token write already succeeded.
+ *
+ * ## Why this exists, and why calling `signIn` twice is NOT the same thing
+ *
+ * `signIn` writes the pair FIRST and fetches `/me` second, so a rejection
+ * leaves valid credentials on disk. Both auth screens offer a "Lanjutkan" that
+ * resumes from there rather than re-submitting the form — a second
+ * `POST /auth/register` would tell somebody their own new email is taken, and a
+ * second `POST /auth/login` would mint a duplicate server session.
+ *
+ * The first version of that resume called `signIn(heldPair)` again, and that
+ * is a session-revocation bug rather than a retry:
+ *
+ *   1. `POST /auth/login` -> 200 with pair P1. `writeSession(P1)`; disk = P1.
+ *   2. `fetchMe()` 401s — server clock skew on `iat`/`nbf`, or any first-request
+ *      rejection. `apiRequest`'s refresh branch now sees a stored session
+ *      (step 1 just wrote it), so `ensureRefreshed()` rotates and writes P2.
+ *      **P1's refresh token is now spent.**
+ *   3. The retried `/me` fails too -> `signIn` rejects -> the screen holds P1.
+ *   4. The person reconnects and taps Lanjutkan -> `signIn(P1)` ->
+ *      `writeSession(P1)` **overwrites the live P2 with the spent P1**.
+ *   5. The next 401 presents a spent refresh token. The server reads that as
+ *      reuse and revokes every session on every device — see `secure.ts`'s own
+ *      note on why a `refreshPending` marker is a definitive discard.
+ *
+ * So a resume must never re-run step 1. Whatever is on disk is at least as new
+ * as the pair the screen is holding, precisely because a resume can only be
+ * reached after a successful write. The passed pair is used ONLY when the disk
+ * has somehow been emptied in between (a sign-out landing mid-flight), where
+ * writing it back is the strictly better of two bad options: without it there
+ * is nothing to authenticate with at all.
+ *
+ * `clearActiveVehicle()` is deliberately NOT repeated — `signIn` already ran
+ * it before the write that got us here, and running it again would be a second
+ * owner of that decision.
+ *
+ * Found in Task 2's review of Plan B.
+ */
+export async function resumeSignIn(tokens: {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}): Promise<void> {
+  const stored = await readSession();
+  if (stored === null) {
+    await writeSession({
+      access: tokens.access_token,
+      refresh: tokens.refresh_token,
+    });
+  }
 
   const user = await fetchMe();
   await startPersistence(user.id).catch(() => {});

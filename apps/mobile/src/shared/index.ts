@@ -14,7 +14,7 @@ export { refreshMe } from "./api/me";
 export { queryClient } from "./api/queryClient";
 export { useBootstrap } from "./bootstrap";
 export { AppGate, AuthGate, OnboardingGate } from "./gates";
-export { signIn } from "./session/signIn";
+export { resumeSignIn, signIn } from "./session/signIn";
 export { signOut } from "./session/signOut";
 export { useSession } from "./session/store";
 export type { Me, SessionStatus } from "./session/store";
