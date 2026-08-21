@@ -44,7 +44,11 @@ Every task's requirements implicitly include this section.
 - **Never `allowFontScaling={false}`.** Large system text must reflow.
 - **Never distinguish an unknown email from a wrong password** — not in copy, not in a hint, not in
   a log, not in analytics, not in a "did you mean to register?" nudge on the login screen.
-- **Nothing new is installed.** `bun.lock` must be unchanged at the end of this plan.
+- **Exactly one thing is installed: `zod`, by Task 1** (`bun add --cwd apps/mobile zod`). `bun.lock`
+  and `apps/mobile/package.json` change once, in that task, and **nowhere else**. An earlier draft of
+  this line read "Nothing new is installed; `bun.lock` must be unchanged", which contradicts this
+  plan's own "Dependency ownership" section below and would make Task 1's own gate look like a
+  violation. `react-hook-form` and `@hookform/resolvers` remain uninstalled by anyone.
 - **No social login, no email verification, no password reset, no biometrics.** AM-52, AM-53, AM-54,
   AM-77 keep those.
 - **The client never decides a username is acceptable.** It mirrors the regex for instant feedback;
@@ -90,6 +94,34 @@ to: Plan A renders no input, and its only runtime parsing is one envelope narrow
 
 A writer who finds `zod` already present should not re-install it; a writer who finds it missing
 in any task after Task 1 has found a real defect, not a setup step.
+
+### The three gaps are CLOSED — verified against Plan A's shipped code, 2026-08-21
+
+The controller read Plan A's merged code before task 1 was dispatched. All three gaps below are
+answered. **Task 1 confirms these file:line facts; it does not re-investigate them, and none of the
+fallbacks below is needed.**
+
+| Gap | Answer | Evidence |
+|---|---|---|
+| CG-1 | `signIn(tokens: { access_token: string; refresh_token: string; expires_in: number }): Promise<void>` — exported from `@/shared`. Takes the wire shape **snake_case, and `expires_in` is required**, so hand it the parsed response object as-is. | `apps/mobile/src/shared/session/signIn.ts:62`, `apps/mobile/src/shared/index.ts` |
+| CG-2 | **No new property, and no `code` field.** The backend answers a taken email or username with 409 + `details: {email\|username: "<pesan>"}`, and Plan A's `toApiError` already routes *a 409 that names a field* to `kind: "validation"` with `fields` populated. `registerConflictOf` therefore reads `error.fields`. | backend `apps/api/crates/runtime/src/adapter/http/auth.rs:370-372` via `ApiError::conflict_on`; client `apps/mobile/src/shared/api/errors.ts`, the `status === 409 && fields !== undefined` branch |
+| CG-3 | `AuthGate` renders `<Redirect>` the moment `status === "signedIn"`, and `app/(auth)/_layout.tsx` already wraps its `<Stack>` in it. Nothing to add. | `apps/mobile/src/shared/gates.tsx`, `apps/mobile/src/app/(auth)/_layout.tsx` |
+
+**Where AuthGate actually sends somebody, which changes what "success" looks like on these screens.**
+It is not one destination. `needsProfile(user) || needsFirstVehicle(user)` sends them to
+`/(onboarding)`; only a complete profile with a vehicle reaches `/(app)`. A newly registered account
+has `display_name === null`, so **registration always lands on the onboarding group** — whose screen
+is still Plan D's placeholder. That is correct and expected. Do not "fix" it by redirecting
+somewhere else, and do not build a stub to make it look finished.
+
+**A 401 on the login screen is a wrong password, NOT an expired session.** The backend answers bad
+credentials with 401 + "Email atau password salah." (`i18n.rs:176`), and `toApiError` maps every 401
+to `kind: "unauthorized"`. On `login.tsx` that kind is an ordinary inline credentials error. Never
+treat it as a session-expiry signal, never call `signOut()` on it, never redirect on it.
+`apiRequest` will not attempt a refresh for it either — its refresh branch requires a stored
+session, and there is none while signed out.
+
+---
 
 ### Three gaps in that contract, and what Task 1 does about each
 
@@ -268,13 +300,27 @@ default, `sonnet` acceptable on Task 5 (welcome) alone, which is layout and copy
 6. _layout.tsx already overrides the navigation container background to
    transparent so AmGround shows through. Do not undo it.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig is
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner as of Plan A: `bun test test/`, run by
+   `make mb-check` and by CI. One suite exists, test/session.test.ts, which
+   mocks modules with `mock.module` from "bun:test". There is NO React
+   renderer and no @testing-library — a component cannot be rendered in a
+   test. Pure functions (schemas, mappers, countdown math) CAN be tested and
+   a task whose TDD verdict is `yes` puts its test in apps/mobile/test/.
+   tsconfig is strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — see
    apps/mobile/src/app/catalog.tsx for a worked example of every primitive.
 10. Never set allowFontScaling={false}. Large system text must reflow.
 11. Root .env belongs to the BACKEND; apps/mobile reads only EXPO_PUBLIC_*.
 12. CI workflows are path-filtered per app.
+13. Backend gates go through `make` ONLY. The Makefile loads and exports the root
+    `.env`; a bare `cargo build`/`cargo test` from a shell does not, so sqlx
+    silently switches between the committed `.sqlx` offline cache and a live
+    database check and the two can disagree. Plan B touches no Rust, so this
+    matters only if you find yourself running cargo at all — which you should
+    not.
+14. Piping a command through `tail`/`head` REPLACES its exit code with the
+    pipe's. `make mb-check | tail -5` reports success on a failing gate. Read
+    `$?` from the unpiped command, or write to a file and grep it.
 ```
 
 ## Quality gate — paste verbatim into every task brief (this repo runs NO Sonar)
@@ -469,7 +515,7 @@ in Task 3's visual pass, and eyeball it now by reading the regex against it:
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 
 import { apiRequest, type ApiError } from "@/shared/api";
-import { signIn } from "@/shared/session";
+import { signIn } from "@/shared";
 
 /**
  * The wire shape, snake_case, exactly as the frozen contract states it.
@@ -607,7 +653,13 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
   · `function formatCountdown(seconds: number): string` (`95` -> `"1:35"`) · the route `/login`,
   which Task 4 and Task 5 link to and Task 4 extends to read an `email` param.
 
-**TDD: no** — no runner in `apps/mobile` (ENV 8), and the deliverable is a screen. Verified by
+**TDD: yes for `useCountdown`'s pure math, no for the screen.** A runner exists (corrected ENV 8):
+`bun test test/`, in `mb-check` and CI. It has **no React renderer**, so `login.tsx` genuinely cannot
+be render-tested — but a wall-clock countdown is arithmetic over two timestamps, it is exactly the
+kind of thing that is wrong at a boundary and invisible on screen, and it is testable today.
+Extract the remaining-seconds computation as a plain exported function, write its failing tests
+first (zero, one, expiry exactly now, expiry in the past, a fractional second, a clock that jumps
+backwards), then build the hook on it. The screen itself is verified by
 running it: the states listed below, on a simulator, in both themes.
 
 **Acceptance criteria:**
@@ -888,7 +940,14 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
     `interface ConsentCheckboxProps { readonly checked: boolean; readonly onChange: (checked: boolean) => void; readonly label: string }`
   - the route `/register`, which Task 4 extends and Task 5 links to.
 
-**TDD: no** — no runner (ENV 8). The pure part (`strengthOf`, the availability state machine) is
+**TDD: yes for the pure parts, no for the screens.** A runner exists (corrected ENV 8) and it has
+no React renderer, so the components cannot be render-tested — but the plan already identified the
+pure logic here, and "no runner" was the only reason it went untested. Write failing tests first for
+`strengthOf` (every band boundary, and **character count not byte count** — an emoji password must
+score by characters, matching the backend's own `length_is_counted_in_characters_not_bytes`) and for
+the availability state machine's transitions (idle → checking → available/taken/unknown, and every
+failure resolving to `unknown`, never `taken`). The rest of the pure part (`strengthOf`, the
+availability state machine) is
 verified by the boundary table in Task 1 Step 3 and by the states in Step 5 below.
 
 **Acceptance criteria:**
@@ -1357,7 +1416,8 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
 - Consumes: `registerConflictOf` (Task 1) · `useLocalSearchParams`, `router` from `expo-router`
 - Produces: `/login` accepts an optional `email` search param. Nothing else consumes it.
 
-**TDD: no** — no runner (ENV 8); this is navigation and copy, verified by running the flow.
+**TDD: no** — a runner exists (corrected ENV 8) but has no React renderer, and this task is
+navigation and copy with no extractable pure logic. Verified by running the flow.
 
 **Acceptance criteria:**
 - **AM-50 AC3 (partial, deliberately)** — registering with a taken email offers **signing in** as a
@@ -1493,7 +1553,9 @@ this surface has a committed design system (`docs/design.md`, `packages/tokens`,
 primitives), so `impeccable` refines within it and does not re-open the typeface or the palette.
 
 **Files:**
-- Create: `apps/mobile/src/app/(auth)/index.tsx`
+- **Replace** (the file EXISTS): `apps/mobile/src/app/(auth)/index.tsx` — Plan A shipped a
+  placeholder there reading "Belum masuk / Layar masuk dan daftar menyusul", whose own comment says
+  Plan B replaces it. Overwrite it wholesale; do not append to it and do not create a second route.
 
 **Interfaces:**
 - Consumes: `AmButton`, `useTheme`, `Link`/`router` from `expo-router`, the routes `/login` and
@@ -1501,7 +1563,7 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
   compile a link to a route file that does not exist).
 - Produces: the route `/` within the `(auth)` group. Nothing consumes it.
 
-**TDD: no** — layout and copy, no logic. Verified by opening it.
+**TDD: no** — layout and copy, no logic, and no React renderer in the suite. Verified by opening it.
 
 **Acceptance criteria:**
 - Two actions: "Masuk" and "Daftar", both ≥44pt, both reaching a real screen.
@@ -1514,7 +1576,7 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
 
 ```tsx
 import { router } from "expo-router";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AmButton } from "@/components/input";
@@ -1545,8 +1607,8 @@ export default function Welcome() {
           AnakMobil
         </Text>
         <Text style={[theme.type["body-lg"], { color: theme.color.textSecondary }]}>
-          Garasi digital buat mobil kamu. Catat servis dan modifikasi, cari tahu masalah yang umum
-          terjadi, dan tanya soal mobilmu ke sesama pemilik.
+          Garasi digital buat mobil kamu. Catat servis dan modifikasi, lalu tanya apa pun soal
+          mobilmu ke sesama pemilik.
         </Text>
       </View>
 
@@ -1595,8 +1657,13 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
 
 **Files:**
 - Create: `apps/mobile/src/features/auth/SignOutConfirm.tsx`
-- Modify (or create if Plan A did not): `apps/mobile/src/app/(app)/index.tsx` — a temporary mount so
-  the flow is exercisable before Plan C exists.
+- **Modify** `apps/mobile/src/app/(app)/index.tsx` — the file EXISTS and already ships a sign-out,
+  which changes this task from "add a mount" to "replace an unsafe control". Plan A left
+  `<AmButton label="Keluar" variant="secondary" onPress={() => void signOut()} />` on that screen:
+  it signs out on a single tap with **no confirmation**, which is precisely what AM-51 AC4 forbids,
+  and `void signOut()` swallows a rejection. Swap that one element for `<SignOutConfirm />` and
+  drop the now-unused `signOut` import. Leave the rest of that screen alone — its healthcheck body
+  and its raw StyleSheet numbers are AM-14's and are not this plan's to churn.
 
 **Interfaces:**
 - Consumes: `signOut` from Plan A's session module · `AmButton`, `AmBottomSheet`, `useTheme`
@@ -1604,7 +1671,8 @@ primitives), so `impeccable` refines within it and does not re-open the typeface
   `interface SignOutConfirmProps { readonly label?: string }` — Plan C mounts this in the profile
   tab's settings.
 
-**TDD: no** — no runner (ENV 8); the behaviour under test is a native sheet and a Plan A transaction.
+**TDD: no** — a runner exists now (corrected ENV 8), but it cannot render a component, and the
+behaviour under test is a native sheet plus a Plan A transaction. Verified by running the app.
 
 > **The sign-out transaction belongs to Plan A and this plan only triggers it.** Plan A's `signOut()`
 > increments the auth epoch, cancels in-flight requests, clears the in-memory query cache, awaits the
@@ -1630,7 +1698,7 @@ import { Text, View } from "react-native";
 
 import { AmBottomSheet } from "@/components/display";
 import { AmButton } from "@/components/input";
-import { signOut } from "@/shared/session";
+import { signOut } from "@/shared";
 import { useTheme } from "@/theme";
 
 export interface SignOutConfirmProps {
@@ -1652,9 +1720,21 @@ export function SignOutConfirm({ label = "Keluar" }: SignOutConfirmProps) {
   const confirm = () => {
     // Guards the double tap: the sheet stays open for the duration of the
     // transaction, and a second press while `busy` does nothing.
-    if (busy) return;
+    // NOT a guard against the double tap — `busy` here is this render's stale
+    // value, so a second tap landing before the commit reads `false`. The tap is
+    // actually stopped by AmButton's `disabled={loading}` once the commit lands,
+    // and anything that slips through is absorbed by signOut()'s single-flight
+    // `inFlight`: one run(), one POST /auth/logout. (Corrected after Task 6's
+    // review — the original snippet had `if (busy) return;` here, which is
+    // unreachable on every path, plus a comment asserting it guarded the race.)
     setBusy(true);
-    void signOut().finally(() => {
+    void signOut()
+      // Plan A leaves the app signed out either way — setSignedOut() runs in its
+      // `finally`. Nothing to say to the person and nothing to retry; without this
+      // the rejection is unhandled, which is the exact shape (`void signOut()`)
+      // this task replaced. Corrected after Task 6's review.
+      .catch(() => {})
+      .finally(() => {
       setBusy(false);
       setOpen(false);
     });
@@ -1758,7 +1838,8 @@ Carried from the spec, narrowed to what this plan could plausibly violate.
 - **No social login, no email verification, no password reset, no biometrics, no two-factor.** Those
   are AM-52, AM-53, AM-54, AM-77 and stay theirs — including any button that pretends to start one.
 - **No invented counts, no seeded data, no fabricated testimonials** on the welcome screen.
-- **No new npm/bun dependency.** `bun.lock` unchanged.
+- **No new npm/bun dependency beyond `zod`**, which Task 1 installs. Nothing else touches
+  `bun.lock`. Never `npm` — `bun add --cwd apps/mobile <pkg>`.
 - **No new design value.** Everything through `useTheme()`.
 - **No control whose destination does not exist.**
 
@@ -1785,12 +1866,40 @@ Then a pull request into `dev` — `gh pr create --base dev`, the base passed ex
 
 ## Execution status
 
-- [ ] Task 1 — Auth request layer, schemas, and the AmTextField input props
-- [ ] Task 2 — Login screen (uniform error, rate-limit countdown)
-- [ ] Task 3 — Register screen (live validation, debounced availability, consent gate)
-- [ ] Task 4 — The already-registered path
-- [ ] Task 5 — Welcome screen
-- [ ] Task 6 — Sign-out trigger
+- [x] Task 1 — Auth request layer, schemas, and the AmTextField input props. `schemas.ts`,
+  `conflict.ts`, `api.ts` created; `AmTextField` gained the five input-behaviour props (its
+  `components/input/index.ts` already re-exports `AmTextFieldProps` by name, so they flow through
+  with no edit there). `zod@4.4.3` added. **CG-1, CG-2, CG-3 all confirmed held** against Plan A's
+  shipped code — the CG-2 409 fallback was correctly NOT implemented. 23 new tests; suite
+  `30 pass 0 fail`. Controller re-ran the gate: `bun run format` EXIT=0, `make mb-check` EXIT=0.
+  Reviewed on `opus`.
+- [x] Task 2 — Login screen (uniform error, rate-limit countdown). `useCountdown.ts` (wall-clock,
+  not a decrementing counter), `login.tsx`, 9 tests written failing-first and three of them
+  mutation-verified by the writer. Its writer **refused a wrong instruction from the controller and
+  was right** — see the `mutation.data` ledger row. Reviewed on `opus`.
+- [x] Task 3 — Register screen (live validation, debounced availability, consent gate). Split into
+  `passwordScore.ts` + `availability.ts` (pure, testable) and `useUsernameAvailability.ts` +
+  `PasswordStrength.tsx` + `ConsentCheckbox.tsx` + `register.tsx`. 22 tests, each confirmed failing
+  before implementation. Controller re-ran the gate: `format` EXIT=0, `mb-check` EXIT=0,
+  `61 pass 0 fail`. Reviewed on `opus`.
+- [x] Task 4 — The already-registered path. `emailTaken` + the conflict panel in `register.tsx`,
+  the seeded email on `login.tsx`. The reset-password half is one honest sentence with no control,
+  because AM-54 does not exist. Reviewed on `opus`.
+- [~] Task 5 — Welcome screen. **Built, then DELETED on the owner's call, 2026-08-21.** `(auth)/index.tsx`
+  is now a one-line `<Redirect href="/login" />`. The reason is worth keeping: the screen asked for a
+  tap without answering anything — a person opening the app either has an account or does not, and
+  both need the same next screen. It was also the least honest surface in the app, describing
+  features that are not built. Its two controls now live where they belong: sign-in is the screen,
+  and register is a link on it. Originally **written inline by the controller** (all four inline tests held:
+  nothing else was ready, one file, `TDD: no`, and it touches nothing on the floor list). Replaced
+  Plan A's placeholder. Controller gate: `format` EXIT=0, `mb-check` EXIT=0, `61 pass 0 fail`.
+  Reviewed on `sonnet` — an inline-written task is never folded into a batch.
+- [x] Task 6 — Sign-out trigger. `SignOutConfirm.tsx` created; `(app)/index.tsx`'s unconfirmed
+  one-tap `AmButton` REPLACED (see the pre-exec `structural` ledger row). `AmBottomSheet`'s real
+  props (`visible`/`onClose`/`title`/`children`) matched the plan's assumption exactly, as did
+  `AmButton`'s `"destructive"` variant. One deviation from the plan's literal snippet: it imported
+  `signOut` from `"@/shared/session"`, which is **not a valid module path** — no such barrel exists.
+  Corrected to `"@/shared"`. Reviewed on `opus`.
 
 ---
 
@@ -1799,8 +1908,71 @@ Then a pull request into `dev` — `gh pr create --base dev`, the base passed ex
 *Empty at plan time. Severity vocabulary: `structural` (raise and fix now — a column, a constraint,
 or a public contract) · `correctness` · `test-integrity` · `hygiene`.*
 
+**Consolidated 2026-08-21, and the pass earned its place.** Four Task 6 findings were recorded as
+fixed because the PLAN's snippet had been corrected — but the snippet is not the code, and
+`SignOutConfirm.tsx` still carried all four live: the unreachable double-tap guard, the swallowed
+rejection, the unguarded `onClose`, and the missing `TEMPORARY` marker. Reading the rows back
+against the files is what caught it. Two more rows were stale in the other direction (fixed, never
+written back), and one proposed deleting a module that Task 4 had since made load-bearing.
+
 | Task | Severity | File:line | Failure scenario | Smallest fix | Closed how |
 |---|---|---|---|---|---|
+| pre-exec | `hygiene` | plan ENVIRONMENT item 8 | The card said "apps/mobile has NO test runner and this work does not add one". Plan A added one (`bun test test/`, in `mb-check` and CI). Every task inherited a `TDD: no` justified by an absence that no longer holds, so Task 1's pure functions — the username regex, the password bands, `fieldErrorsOf`, `registerConflictOf` — would have shipped with no test that can fail. | Rewrite item 8 with what actually exists, including the limit that matters: no React renderer, so components still cannot be tested. | Fixed in the plan before task 1 was dispatched; Task 1's verdict flipped to `TDD: yes` for `schemas.ts` and `conflict.ts`. |
+| pre-exec | `correctness` | plan Task 5 "Files: Create `app/(auth)/index.tsx`" | The file already exists — Plan A shipped a placeholder there. A writer told to *create* it either fails on a collision or, worse, adds a second route file next to it. | Say **replace**, and name what is being replaced. | Fixed in the plan. |
+| pre-exec | `structural` (product) | `apps/mobile/src/app/(app)/index.tsx` | Plan A left `<AmButton label="Keluar" onPress={() => void signOut()} />` on the post-auth screen: a **single tap signs out with no confirmation**, which is exactly what AM-51 AC4 ("When saya mengonfirmasi") forbids, and `void signOut()` swallows a rejection. Task 6 was briefed as "add a mount", which would have left the unsafe control sitting next to the safe one. | Task 6 replaces that element with `<SignOutConfirm />` rather than adding beside it. | Fixed in the plan before task 6 was dispatched. |
+| pre-exec | `correctness` | plan CG-2 "Fallback if Plan A kept 409" | The plan offered two readings and told Task 1 to pin one. Plan A in fact routes a 409-that-names-a-field to `kind: "validation"` already, so the fallback (adding `code?: string` to `ApiError`) would have been a needless widening of a frozen contract. | Record the verified answer with file:line and delete the choice. | Fixed in the plan; the fallback is marked not-needed. |
+| pre-exec | `correctness` | `apps/mobile/src/shared/api/errors.ts` | A 401 from `/auth/login` is a **wrong password**, and `toApiError` maps every 401 to `kind: "unauthorized"`. A login screen that treats that kind as "session expired" would sign out or redirect on a typo. | Stated in the plan and in both screen briefs. | Recorded; Task 2 must honour it. |
+| pre-exec | `test-integrity` | plan, 5 `TDD:` verdicts | **Systemic, not one instance.** Every TDD verdict in the plan was justified by "no runner in `apps/mobile` (ENV 8)" — the same phantom absence as the row above. Task 2's countdown is arithmetic over two timestamps and Task 3's `strengthOf` and availability state machine are pure functions the plan *itself* identified as "the pure part"; all three would have shipped with nothing that could fail. A countdown wrong at a boundary and a `strengthOf` counting bytes instead of characters are both invisible on screen. | Re-derive each verdict from what is actually true: a runner exists, it has **no React renderer**, so screens stay test-after and the pure logic becomes test-first. | Fixed in the plan. Tasks 2 and 3 dispatched with `TDD: yes` for their pure parts and explicit failing-test-first instructions; Tasks 4 and 5 stay `no` but no longer cite a false reason. |
+| Task 1 | `correctness` | plan Task 1 Steps 4-5, and Plan D ×5 | The plan's own code snippets import from `@/shared/api` and `@/shared/session`. **Neither module path exists** — Plan A ships exactly one barrel, `apps/mobile/src/shared/index.ts`, whose header says Plans B/C/D import from `@/shared` and nowhere else. Tasks 1 and 6 hit this independently, minutes apart. Plan D carried the same bad path five times and would have hit it again. | Rewrite every such import to `@/shared`, in Plan B **and** Plan D. | Fixed in both plan files, with a note in Plan D saying why. Plan C was checked and was already clean. |
+| Task 1 | `hygiene` | plan Task 1 Step 6 | Step 6 required "`git diff --stat bun.lock` must be empty" while Step 4 of the same task mandates `bun add --cwd apps/mobile zod`, which necessarily changes it. A writer reading Step 6 literally fails its own task. The same contradiction sat in Global Constraints and in `Tidak boleh ada`. | State the real invariant: `bun install --frozen-lockfile` stays EXIT=0, i.e. nothing drifted *beyond* the sanctioned zod add. | Fixed in all three places. |
+| Task 6 | `test-integrity` | `SignOutConfirm.tsx:26-28` | The `if (busy) return;` double-tap guard **is unreachable on every path**. Committed `busy === true` → `AmButton` is already `disabled` and `onPress` never fires. Committed `false` → the check is false. The pre-commit race the comment names → the second tap runs the previous render's closure where `busy` is still `false`, so the check is false there too. The AC holds, but for two reasons this line is not: `AmButton`'s `disabled={loading}`, and `signOut.ts:112`'s module-level single-flight `inFlight ??= run()`. A later edit that swaps the spinner treatment, trusting this comment, would let two `confirm` calls through. | Delete the line; rewrite the comment to name the two real guards. **The line came from the plan's own Step 1 snippet** — fix the snippet too. | **Closed** in the fix pass. |
+| Task 6 | `hygiene` | `SignOutConfirm.tsx:30` | `void signOut().finally(…)` **still swallows the rejection this task existed to stop swallowing** — `.finally()` returns a promise that adopts the rejection and `void` discards it, with no `.catch` anywhere. `signOut()` really can reject: `signOut.ts:75-101` is `try`/`finally` with no `catch`, and its own comment names an MMKV throw from `purgeAllPersistedCache()` and a rejecting `cancelQueries()`. The person *is* signed out (`setSignedOut()` runs in the `finally` first), so no stuck spinner and no false success — the cost is an unhandled rejection, and a pre-exec ledger row that reads as closed while the shape it named survived. | `.catch(() => {})` before `.finally(...)`. Same snippet origin as the row above. | **Closed** in the fix pass. |
+| Task 6 | `hygiene` | `apps/mobile/src/app/(app)/index.tsx:77` | The plan's Step 2 requires a `TEMPORARY` marker on this mount and Open question #2 records that Plan C moves it to profile settings. There is none (`grep TEMPORARY` → no hits). **Cross-plan cost:** Plan C's writer mounts `SignOutConfirm` in settings, sees no signal that line 77 is provisional, leaves it — and the app ships **two destructive sign-out controls, one of them on a healthcheck screen**. | Add the two-line comment the plan already wrote. | **Closed** in the fix pass. |
+| Task 6 | `hygiene` | `SignOutConfirm.tsx:39` | `onClose` is unconditional while "Batal" is `disabled={busy}`, and the component's own comment claims "the sheet stays open for the duration of the transaction". `AmBottomSheet` has four other dismissal paths — scrim tap, "Tutup" header button, a >96pt drag, Android hardware back — all routing to the unconditional `onClose`. Sequence: confirm → drag down → sheet closes with `busy` still true → the outer trigger is not gated on `busy`, so reopening shows a sheet whose only two buttons are both greyed out until the ~5s abort bound elapses. Nothing breaks; the component contradicts itself. | `onClose={() => { if (!busy) setOpen(false); }}` | **Closed** in the fix pass. |
+| Tasks 2-3 | `correctness` (product) | `apps/mobile/src/shared/api/errors.ts`, `toApiError` 409 branch | **Measured against the running API, not assumed.** A taken email answers `409 {"error":{"code":"conflict","message":"Data ini sudah berubah. Muat ulang, lalu coba lagi.","details":{"email":"Email ini sudah terdaftar."}}}`. `toApiError` copies the TOP-LEVEL message onto `ApiError.message`, so a screen that renders `error.message` as a banner — the natural thing to do — tells somebody whose email is already registered *"This data has changed. Reload and try again."* That breaks AM-50 AC3 and AM-57. Separately, a **missing required field** returns axum's plain-text 422 with **no envelope**, which parses to `kind: "validation"` with `fields: undefined` and the generic server message — so a screen that only renders `fields` shows **nothing at all** and the button appears dead. | One rule covering both: on `kind: "validation"` **with** `fields`, render the field messages and suppress `message`; **without** `fields`, render `message` as a form-level banner. | Sent to both writers mid-flight; to be confirmed in their reports. |
+| Task 1 | `correctness` | `features/auth/api.ts`, `useRegister`/`useLogin` | **`isError` does not mean the request failed.** TanStack Query awaits `onSuccess` and routes its rejection into the mutation's error state, and `signIn` writes the token pair to SecureStore *before* calling `fetchMe()`. So: `201 Created` → tokens on disk → `fetchMe()` rejects offline → mutation shows `kind: "offline"` → the screen offers "coba lagi" → a **second** `POST /auth/register` → `409 "Email ini sudah terdaftar."` The person is told their own thirty-second-old email is taken while valid credentials sit on the device. On login the same path mints a second server session alive to the refresh token's full TTL. No automatic retry is involved — `queryClient` sets no `mutations` block, so v5's default of 0 applies; the retry is a human finger, which is worse because the UI invites it. `signIn.ts:41-45` warns about exactly this, addressed at this file, and nothing carried it forward. | Doc comment at source naming the hazard; the screens retry with `signIn(mutation.data)` once `data` exists, never by re-submitting. | **Closed.** Doc comment added to `api.ts`; sent to both screen writers mid-flight. |
+| Task 1 | `correctness` | `features/auth/schemas.ts:28-32` | **The mirror was not a mirror — it rejected names the server accepts, with a message describing a rule the person did not break.** `username.rs:78` does `raw.trim().to_ascii_lowercase()` and only *then* validates; the client validated the raw string. Measured: `Oksa` → server accepts as `oksa`, client rejects with "Awali dan akhiri dengan huruf atau angka" (the problem is a capital letter, which the message never mentions); `"  Budi  "` → same. This is the "client never decides a username is acceptable" constraint in its inverted form. The plan's boundary table ratified it on the grounds that "the field lowercases as you type, so this is only reachable by paste" — but paste from a password manager is the normal path, and no task anywhere planned a `trim`. | `.trim().toLowerCase()` before `.min(3)`, reproducing `canonicalise`'s exact order. | **Closed.** Fixed in `schemas.ts`; a new test pins `Oksa`→`oksa`, `"  Budi  "`→`budi`, and that canonicalising does not soften `ok`, `Ok..Sa`, `.budi`. |
+| Task 1 | `test-integrity` | `test/auth-schemas.test.ts:73-83` | A test named "fieldErrorsOf keeps only the first message per field" **could not fail**. Verified at runtime against zod 4.4.3: `z.string().min(3).max(5)` against `"a"` raises exactly **one** issue (`.max(5)` passes), so the `!(key in out)` dedup guard was never reached. Deleting the guard left the test green. Its own comment claimed the opposite. | Move the assertion to the sibling fixture that genuinely raises two issues on one path (`username: "no"` fails `.min(3)` **and** the regex) and assert the exact first message; delete the redundant test. | **Closed.** `expect(errors.username).toBe("Minimal 3 karakter.")` now pins first-wins; suite `22 pass 0 fail` on that file. |
+| Task 1 | `correctness` (low) | `features/auth/api.ts:30-36` | `body: input` shipped whatever object it was handed. TypeScript's excess-property check fires only on fresh literals, so `mutate(parsed.data)` — `registerSchema`'s output, which **includes `consent: true`** — compiled and put a fourth field on the wire. Not exploitable (the server's `RegistrationRequest` is an explicit three-field DTO and serde ignores unknown keys, and there is no role/verified/balance field to smuggle), but the client's payload was not pinned to the frozen contract, so the next field added to a form would ship silently. | Destructure, so the wire shape is provable by reading the function. | **Closed.** Both request functions destructure. |
+| Task 1 | `hygiene` | `features/auth/conflict.ts:16-17` | Keyed on truthiness, not presence. `stringFields` admits an empty string, so `details: {username: ""}` → falsy → `registerConflictOf` returns `null` → **no conflict shown at all** for a taken username. Not reachable against today's backend (its messages are non-empty consts) and inconsistent with `fieldErrorsOf`, which correctly uses `key in out`. | `!== undefined`. | **Closed.** |
+| Task 1 | `hygiene` | `features/auth/api.ts:48` | `encodeURIComponent` closes the injection-shaped hole but **does not neutralise dot segments**: `encodeURIComponent("..") === ".."`, so `usernameAvailability("..")` builds a path that `fetch`'s URL parser normalises to `${BASE_URL}/availability` → 404 on the same origin, no session attached, nothing forgeable. A guard *in* the function would make the client decide a name is unacceptable, which the spec forbids. | One sentence in the doc comment; callers gate on `USERNAME_PATTERN`, which is where it belongs. | **Closed.** |
+| Task 3 | `correctness` | `test/auth-register.test.ts`, plan Task 3 file layout | **The plan's single-file layout does not survive this test runner.** Importing `PasswordStrength.tsx` (react-native) or the original `useUsernameAvailability.ts` (value-imports `./api` → `@/shared` → `react-native-mmkv`/`expo-router`) crashes bun's transpiler on react-native's Flow-typed internals — the same landmine `session.test.ts`'s own header comment already documents. Left as designed, the pure logic would have been untestable and the `TDD: yes` verdict unmeetable. | Split the pure logic into `availability.ts` and `passwordScore.ts` with zero heavy imports; the component and hook files import from and re-export them. | **Closed** by the writer. Worth carrying into Plans C and D: any pure function that needs a test must live in a file that imports no react-native. |
+| Task 3 | `correctness` | `features/auth/passwordScore.ts` | **Case-collision on a case-insensitive filesystem.** The pure file was first named `passwordStrength.ts`, which on macOS's default APFS collides with `PasswordStrength.tsx` — the import silently resolved to the wrong file, still pulled in react-native, and still crashed the runner. Two files whose names differ only by case are one file to the loader. | Rename to `passwordScore.ts`. | **Closed** by the writer, self-caught. |
+| Task 3 | `correctness` | `features/auth/useUsernameAvailability.ts` | ESLint's `react-hooks/set-state-in-effect` rejected the first design, which called a reducer synchronously at the top of the effect body. The redesign **derives** the state at render (`deriveAvailability(enabled, username, resolution)`) and only ever `setState`s inside the async `.then`/`.catch`. Better model as well as a passing lint: a stale or aborted resolution, tagged with a superseded username, is simply ignored by the derivation rather than needing an explicit "aborted" event. | Derive rather than reduce. | **Closed** by the writer. |
+| Tasks 2-3 | `correctness` | `features/auth/api.ts`, both screens | **The controller's own first fix was dead code, and Task 2's writer caught it by reading the package instead of implementing what it was told.** The instruction was "once a mutation has `data`, retry with `signIn(mutation.data)`". But query-core@5.101.4's reducer does `case "error": return { ...state, data: void 0, ... }` (verified by the controller at `node_modules/.bun/@tanstack+query-core@5.101.4/.../mutation.js:239-248`), so `mutation.data` is **unconditionally `undefined`** whenever `isError` is true. Task 2 refused to implement it and documented why; **Task 3 implemented it**, leaving `register.tsx` with a retry branch that could never run — worse than absent, because it read as handled. There is also no other signal separating "the POST never landed" from "the POST landed and only `/me` failed": both are `kind: "offline"`. | The pair rides the rethrown error instead. `finish()` in `api.ts` wraps `signIn` and rethrows `{ ...error, tokens }`; `isSignInFailure(error)` narrows it; both screens hold it in `pendingTokens` and the next tap resumes rather than re-submits. | **Closed.** `api.ts` gained `finish`/`SignInFailure`/`isSignInFailure`; `register.tsx` switched from `register.data` to the error-carried pair; `login.tsx` gained the resume path and a "Lanjutkan" button label. Four tests added in `test/auth-signin-failure.test.ts`. Suite `65 pass 0 fail`. |
+| Task 5 | `correctness` | `app/(auth)/index.tsx`, plan Task 5 snippet | **At a large system font size the "Masuk" button slides off the bottom and becomes unreachable.** The container was a plain `View` with `justifyContent: "space-between"`, which does not shrink non-flex children. On a 320×568pt device the title wraps to two lines and the body copy roughly doubles in height; the overflow has nowhere to go, and there is no `ScrollView`. `allowFontScaling` is correctly never disabled, so this is reachable by any person who has enlarged their system text. The AC — "renders without scrolling to reach either button" — was being read as "must not scroll" when it means "must not require scrolling at normal scale". `login.tsx` and `register.tsx` already use `ScrollView` for exactly this; the welcome screen was the odd one out. **The `View` came from the plan's own snippet**, not from the controller. | `ScrollView` with `contentContainerStyle={{ flexGrow: 1, ... }}` — identical at normal scale, scrollable once it stops fitting. | **Closed** in the file **and** in the plan's snippet. |
+| Task 5 | `hygiene` | `app/(auth)/index.tsx`, plan Task 5 snippet | The value-prop copy was ~139 characters, which at `body-lg` in a 288pt column is about four lines — the AC says at most three, before any font scaling. | Shortened to two sentences that still claim nothing the product does not do. | **Closed** in the file and in the plan's snippet. |
+| Task 5 | `hygiene` | `app/(auth)/index.tsx:57,63` | A fast double-tap on "Daftar" can push two Register screens, so one back-press does not return to Welcome. Shared with the sibling screens' `Link` navigations rather than introduced here; the cost is an extra back-press, not data loss. | A `disabled`-while-navigating guard, if it ever proves annoying. | Open — accepted, not worth the state. |
+| Task 3 | `test-integrity` | `test/auth-register.test.ts:101-120`, `useUsernameAvailability.ts:60` | **The security property the suite is named for had no coverage.** Three byte-identical tests, named for a 429, a 5xx, and offline, all called `deriveAvailability` with an outcome **already** equal to `"unknown"` — exercising a pass-through two earlier tests already cover. The mapping they were named for lived inside the hook, which no test can import (it reaches `./api` → `@/shared` → `react-native-mmkv`). Concretely: change the hook's failure outcome to `"taken"` and **all 22 tests stayed green** — a CGNAT-shared 429 would then tell somebody a free name is taken and block their registration. | Lift `outcomeOfResult()` and `OUTCOME_ON_FAILURE` into `availability.ts` (zero imports) and pin both. | **Closed and mutation-verified**: with `OUTCOME_ON_FAILURE` flipped to `"taken"` the suite now reports `1 fail`; restored, `20 pass 0 fail`. |
+| Task 3 | `test-integrity` | `test/auth-register.test.ts:63-67, 76-78`, `passwordScore.ts:12-14` | **Two tests could not fail, and the claim under them describes a failure mode JavaScript does not have.** The source holds `"é"` as U+00E9 **precomposed — one code point** (verified in the bytes: `c3 a9`), so `[...s].length` and `s.length` both give 8; deleting the spread from `strengthOf` left them green, and they duplicated the plain `"a".repeat(8)` case. A decomposed `"e\u0301"` would not discriminate either (2 code points **and** 2 UTF-16 units). The comments spoke of a "byte count", but `.length` counts **UTF-16 code units** and JS has no byte-count operator — framing that came from the controller's own brief and had propagated into `passwordScore.ts`. Only the emoji case genuinely diverges. | Delete both accented tests; keep the emoji one; correct the framing in both files. | **Closed.** |
+| Task 3 | `correctness` | `features/auth/api.ts`, `finish()` | **The controller's own fix dropped the error message.** `Error.prototype.message` is an own property but **non-enumerable**, so `{ ...new Error("Keystore unavailable") }` is `{}`. `signIn` has two steps that reject with real `Error`s rather than taxonomy literals — `clearActiveVehicle()` through MMKV and `writeSession()` through expo-secure-store; only `fetchMe()` rejects with an object. On a Keystore failure the screen received `message === undefined`, the banner was falsy, and **nothing rendered** — the person tapped a button that visibly did nothing. It self-corrected on the second tap, which is worse, not better. | An `asApiError()` normaliser before the spread. | **Closed**, with three tests including one that pins the bare-spread defect itself. |
+| Task 3 | `correctness` | `app/(auth)/register.tsx:134, 185-186` | **A stale server field error is never cleared and permanently suppresses the availability hint.** `errors` is written only by `submit()` and cleared only by another `submit()`. So: availability endpoint down → `unknown`, button enabled → submit `budi`, which is genuinely taken → 409 sets `errors.username` → the person types `budi.satya` → the message *"Username ini sudah dipakai."* still shows under a name that is not `budi`, the hint is suppressed so `"Username ini tersedia."` can never render even once the endpoint recovers, and the button stays enabled. The screen says the name is taken and lets them submit it. Same shape for `email` and `password`, minus the hint suppression. | Clear a field's entry from `onChangeText`. | **Closed** in the fix pass, once Task 4 released the file. |
+| Task 3 | `hygiene` | `app/(auth)/register.tsx:84-107` | After a `SignInFailure` the form stays editable but every field is ignored: `canSubmit` is forced true and `submit()` always takes the resume branch. Somebody who reads the offline banner, decides their email was wrong, edits it and taps "Daftar" is signed in under the **original** email with no sign the edit was discarded. The label still reads "Daftar", which now means "resume". | Label it "Lanjutkan" while `pendingTokens !== null`, as `login.tsx` already does. | **Closed** in the fix pass, once Task 4 released the file. |
+| Task 3 | `hygiene` | `useUsernameAvailability.ts:34-35` | The comment said the AbortController is "built and **armed** by hand". Nothing arms it — there is no `setTimeout(() => controller.abort(), …)`, unlike every other hand-built controller in the repo (`signOut.ts:53`, `bootstrap.ts:89`, `refresh.ts:96`). On a black-hole network the hint reads "Memeriksa ketersediaan…" until the next keystroke. Nothing is blocked (`disablesSubmit("checking")` is false), so the real cost is the comment: a reader trusting "armed" will not add the bound. | Say what is actually true. | **Closed** — comment corrected; no bound added, deliberately, since nothing is blocked. |
+| Task 3 | `hygiene` | `features/auth/conflict.ts` | `registerConflictOf` has **no production consumer**. Its own doc comment says it exists "so no screen encodes the choice itself", but `register.tsx` reads `error.fields` directly — which is the better code, because `setErrors(error.fields)` covers both fields at once and the `"email" \| "username" \| null` return cannot. Only the test imports it. | Delete the module and its three tests rather than manufacture a consumer. | **Superseded** — Task 4 landed and IS the consumer (`register.tsx:9`, `:124`). The deletion was correctly never performed; see the row below. |
+| Task 2 | `correctness` | `shared/session/signIn.ts`, both screens | **The resume path could make the server revoke every session on every device.** `signIn` starts with `writeSession`, so calling it again to resume rewrites the pair the screen is holding. Chain: `POST /auth/login` → 200 with **P1**, `writeSession(P1)` → `fetchMe()` 401s (clock skew on `iat`/`nbf`, or any first-request rejection) → `apiRequest`'s refresh branch now sees a stored session, rotates, and writes **P2**, spending P1's refresh token → the retried `/me` fails too → the screen holds P1 → the person taps Lanjutkan → `signIn(P1)` **overwrites the live P2 with the spent P1** → the next 401 presents a spent refresh token, which the server reads as reuse and answers by revoking every session on every device. Low probability, and exactly the failure class the session layer is written at length to prevent. Both screens had it; the design was the controller's. | `resumeSignIn(tokens)` in Plan A's session module: skip `writeSession` when the disk already holds a pair, since a resume by definition follows a successful write. | **Closed.** Added to `signIn.ts`, exported from the barrel, both screens switched. |
+| Task 2 | `correctness` | `app/(auth)/login.tsx` | `pendingTokens` was `useState`, written once and never cleared, so a resume that can never succeed — a Keystore invalidated by a biometric re-enrolment — left the button reading "Lanjutkan" forever with **no path back to an ordinary login**, and typing a different password was silently ignored because `submit()` returned before reading the fields. `register.tsx` derived it from the mutation from the outset; this screen was the outlier. | Derive it from `login.error` the way the sibling does. | **Closed.** |
+| Task 2 | `correctness` | `app/(auth)/login.tsx` | The resume's catch was the **one call site that skipped `asApiError`** — an unguarded `(error as ApiError).message`. Same defect as the `finish()` one, at the third site: an MMKV or Keystore rejection has a non-enumerable `message`, the banner is falsy, and nothing renders. "The fix landed at two of three call sites." | Export `asApiError` and use it; `register.tsx`'s hand-rolled `messageOf` duplicate deleted with it. | **Closed.** |
+| Task 2 | `test-integrity` | `test/auth-signin-failure.test.ts` | **The test restated the contract instead of importing it**, so it would not catch a regression: renaming `AuthTokens`' fields, typoing `isSignInFailure`'s key, or dropping `asApiError`'s guard all left every assertion green. The header blamed `api.ts`'s react-native reach, which is real — but does not apply to those symbols, which are pure. | Move them to `features/auth/signInFailure.ts` (only a type-only import), re-export from `api.ts`, import the real ones. | **Closed and mutation-verified**: the `"token" in error` typo and a disabled `asApiError` guard now each kill 3 tests; both previously passed. |
+| Task 2 | `hygiene` | both screens' footer `Link` | ~18pt tap target against this plan's own ≥44pt floor. The `Am*` primitives apply `minHeight` after the caller's style so it cannot be defeated — a bare `Link` is not one of them. | The review suggested `hitSlop`; **that is not on expo-router's `LinkProps`** and fails `tsc`. Vertical padding on the underlying `Text` grows the touchable region instead: 18 + 2×16 = 50. | **Closed**, by a different mechanism than the one suggested. |
+| Task 2 | `hygiene` | `test/auth-countdown.test.ts` | A comment claimed a test caught a `>` vs `>=` slip in the clamp. It does not — that mutant survives, and is behaviourally equivalent, because `Math.min(0, total)` is 0 for every `total >= 1`, which `normalizeSeconds` guarantees. The other half of the sentence (`Math.ceil(x) + 1`) is correct. | Delete the wrong half. | **Closed.** |
+| Task 4 | `correctness` | `app/(auth)/register.tsx` | **The conflict panel asserted something false during an in-flight edit.** `emailTaken` was a boolean bound to nothing: the email field stays editable while the POST is in flight (only the button is gated), so correcting a typo mid-request and then receiving the 409 for the OLD address showed "Email ini sudah punya akun." about an address with no account — and "Masuk dengan email ini" seeded login with the NEW one, which then answers "Email atau kata sandi salah." Told to sign in to an account that does not exist, then told the password is wrong. | Hold the **address** the server refused, not a flag, and render on `emailTaken === values.email`. | **Closed.** |
+| Task 4 | `correctness` | `app/(auth)/login.tsx` | **A crafted deep link crashed the login screen's primary action.** `useLocalSearchParams<{ email?: string }>()` is a type *assertion*; expo-router passes arrays straight through (`build/hooks/useLocalSearchParams.js`). `app.config.ts` sets `scheme: "anakmobil"`, so `anakmobil://login?email=a&email=b` delivered `["a","b"]` into a `readonly value: string` prop, and the first tap on Masuk hit `email.trim is not a function`. | Removed the route parameter entirely — see the row below, which closes both. | **Closed.** |
+| Task 4 | `correctness` (policy) | `app/(auth)/register.tsx` → `login.tsx` | The email travelled in a **route parameter**. On native that is clean today — `grep` for `console.`/`Sentry`/`analytics`/`track(` over `apps/mobile/src` returns **zero hits**, and there is no address bar. But `app.config.ts` declares `web: { output: "static" }` and `package.json` ships a `web` script, and on that target it renders as `/login?email=oksa%40example.com` — in the address bar, in history, in the back/forward cache, and in the `Referer` of any later cross-origin request. The repository's standing rule is that personal data never goes in a URL parameter or query string, and that build path is one command away. | An out-of-band handoff: `features/auth/pendingEmail.ts`, read-once, module scope (one producer, one consumer, no render depends on it). `router.push("/login")` with no params. | **Closed**, with three tests. Also closes the deep-link crash above: with no param, there is nothing to craft. |
+| Task 4 | `hygiene` | the `conflict.ts` ledger row above | That row said `registerConflictOf` had no production consumer and should be deleted "held until Task 4 lands". **Task 4 landed and is that consumer** (`register.tsx:9`, `:124`). A fix pass working the ledger in order would have deleted it and broken the gate — or worse, "repaired" it by inlining `error.fields?.email` and silently losing the presence-not-truthiness correction. | Close the row rather than act on it. | **Closed as superseded** — the deletion was correctly never performed. |
+| env | `hygiene` | `Makefile`, `mb-run-dev` | `pod install` crashed inside CocoaPods' own **error reporter** (`Encoding::CompatibilityError` in `unicode_normalize`), which masks whatever the real error was. Cause is a non-UTF-8 locale; the target does not set one. | `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` — with it, `pod install` is EXIT=0 and installs all 114 pods. | **Closed.** `LANG`/`LC_ALL=en_US.UTF-8` on all three `mb-run-*` targets, with a comment saying why. |
+| redesign | `correctness` (product) | `app.config.ts`, splash | **The app opened bright blue on a graphite product.** The native splash was `#208AEF` — a value that appears nowhere in `packages/tokens`, whose brand is graphite `#0F141A`–`#3C4550` plus orange `#ED491C`. So every cold start flashed an unbranded blue and then snapped to near-black. It also carried no wordmark, so the product's own name was never on screen at launch. | Splash background to `#0F141A` (`brand.950`), regenerated through `expo prebuild` rather than by hand-editing the generated `SplashScreenBackground.colorset`, which the next prebuild would overwrite. | **Closed.** Verified: the colorset now reads rgb(15, 20, 26). |
+| redesign | `correctness` (product) | `app/_layout.tsx` | The native splash held until **fonts AND the session** resolved, so a cold start with a stored session sat on a bare mark for a whole `/me` round trip — and a native splash is one static PNG that cannot be given a wordmark without a new asset. Nothing in-app could improve it because nothing in-app was reached. | Hide the native splash once **fonts** are ready (they must land first, or the wordmark would draw in the system face and reflow when Inter arrives) and carry the remaining wait in an in-app `LaunchView` that continues it: same ground, same mark, same 76pt width, same centre, plus the wordmark. No spinner — there is nothing to act on and a spinner under a logo reads as "something is wrong". | **Closed.** |
+| redesign | `correctness` (a11y) | `components/input/AmButton.tsx` | **A disabled accent button's label was barely legible**, and it is the first thing anyone sees on the registration screen, whose CTA is disabled until the form is complete. The blanket `opacity: 0.45` worked for the graphite variants (white on graphite survives halving) but `#ED491C` at 45% over the graphite ground is a muddy brown, and its label is `onAccent` — graphite-950, near black — at the same opacity. `docs/design.md` specifies no disabled treatment, so the opacity was an implementer's choice rather than committed spec. | Re-colour when disabled (`surfaceSubtle` fill, `textTertiary` label, `border`) instead of fading. `loading` deliberately keeps the variant's own colours — a button mid-request should look like itself with a spinner, not switched off. | **Closed.** Design-system change: it affects every disabled button in the app, which is the point. |
+| redesign | `hygiene` | both auth screens | The `AmCard` wrapper around each form drew a `#29313A` border on a `#0F141A` ground — barely visible — and indented the fields away from the page gutter for no structure in return. The fields carry their own borders. | Remove it. | **Closed.** |
+| redesign | `hygiene` | both auth screens | The screens were top-anchored with no bottom anchor, so the register/login link floated mid-screen above a half-screen void — visible in the owner's own screenshot. | `flexGrow: 1` on the scroll content plus `marginTop: "auto"` on the footer: pinned to the thumb zone on a tall screen, flowing right after the form on a short one or at a large font size. | **Closed.** |
+| redesign | `hygiene` | `app/(auth)/login.tsx` | The sign-in button used the graphite `primary` default, so the screen's only action rendered grey — and disabled-on-load it read as a dead control. The design system reserves accent for "the strongest brand CTA, used selectively", and a screen whose entire job is one action is exactly that. | `variant="accent"`. | **Closed.** |
+| redesign | n/a | — | **Not a defect:** the floating gear in the owner's screenshots is the **Expo dev-client menu button**, not application UI. It does not exist in a preview or production build. Nothing was changed for it. | — | Recorded so it is not "fixed". |
+| redesign | `hygiene` (a11y) | `components/display/AmBrandLockup.tsx` | At the largest accessibility text size the uncapped 32px wordmark wrapped to two lines and took **two thirds of the screen**, pushing the form somebody actually opened the app for below the fold. Verified on device, not reasoned. | `maxFontSizeMultiplier={1.4}` on the wordmark ONLY — a cap, not `allowFontScaling={false}`, which stays banned. It still grows to ~45px; it just stops the logo becoming the interface. Every other string on these screens scales uncapped. | **Closed.** Re-verified at `accessibility-extra-extra-extra-large`: wordmark on one line, both fields and the CTA on screen without scrolling. |
+| redesign | n/a | — | **Not a defect, and it cost an hour to establish:** the full-screen blue in the owner's first screenshot is the **Expo dev-client's own launcher**, not this app's splash. The dev client ships a blue icon and a blue "Searching for development servers…" screen, and it is what runs in a `development` build. Confirmed by catching it mid-launch. The app's own splash was separately off-brand and has been fixed; a `preview` or `production` build shows neither the blue launcher nor the gear. | — | Recorded so the next person does not chase it. |
+| redesign | `correctness` (brand) | `app.config.ts`, `AmBrandLockup`, `apps/mobile/assets/images/` | **The mobile app was not using the AnakMobil logo anywhere.** `splash-icon.png` and `icon.png` are a blue chevron — a leftover placeholder, not the brand mark — and they were standing in for it on the splash, the app icon, and (briefly) the auth screens. The real mark ships in `@anakmobil/assets`: a graphite garage with an "AM" and an orange road, plus an "AnakMobil**.id**" wordmark, with `favicon-dark.png` / `favicon-light.png` as a purpose-built theme pair. The owner spotted it; nothing in the repo would have. | `AmBrandLockup` imports the theme-appropriate mark **through the package** (`@anakmobil/assets/img/…`), as that package's README asks, and sets the wordmark in the product's own display face so it inherits theme colour and text-size settings. `.id` is orange because the brand's own lockup sets it that way. The native splash gets a build-time copy — an Expo config plugin cannot import from a workspace package. `@anakmobil/assets` added to the mobile app's dependencies. | **Closed.** Verified in both themes on device. |
+| redesign | `correctness` (brand) | `app.config.ts` `ios.icon`, `assets/expo.icon`, `assets/images/*` | **The app shipped Expo's own logo as its icon.** `ios.icon` pointed at `./assets/expo.icon` — a default icon bundle containing literally `expo-symbol.svg` on Expo's blue automatic gradient. The root `icon.png` was the same placeholder chevron. So the home-screen icon was never AnakMobil's. | No AI generation: the real mark was **squared off from the brand's own `favicon-dark.png`** rather than redrawn, so it is pixel-for-pixel theirs. That asset floats a rounded tile on pure-black padding; the tile was cropped out, its vertical gradient sampled from a left-margin column and extended into the rounded corners, then resized to 1024x1024 with no alpha (iOS masks its own squircle — a pre-rounded source double-rounds). The Android adaptive foreground was extracted by luminance mask and inset to the 62% safe zone, with the gradient as the background and a white silhouette as the monochrome layer. `ios.icon` removed so it falls through to the root icon. | **Closed.** Needed `expo prebuild --clean` and a delete of `ios/AnakMobilDev/expo.icon` — `expo run:ios` alone regenerates neither. Verified on the simulator home screen. |
+| pre-exec | `correctness` (product) | AM-51 AC1 | "diantar ke beranda dengan **kendaraan aktif yang terakhir saya pilih**" cannot be satisfied by this plan and is not merely unbuilt: Plan A's `signIn` calls `clearActiveVehicle()` **by design**, so the device-global active vehicle is deliberately dropped on every sign-in — otherwise the next account opens on a car it does not own. Restoring the last vehicle must therefore be **per-account**, and that belongs to Plan C's shell. | No code change here. Report the split honestly on AM-51 at the end rather than letting the AC read as delivered. | Open — to be reported on the ticket. |
 
 **Findings known before execution, to be entered by the task that touches them:**
 
