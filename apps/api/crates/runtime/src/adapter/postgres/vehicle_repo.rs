@@ -40,6 +40,10 @@ pub struct Vehicle {
     pub cost_visibility: Visibility,
     /// Assembled from the catalog when the car is matched to a variant.
     pub catalog_name: Option<String>,
+    /// The brand primary domain, when the car is matched to a variant. The
+    /// client composes its own logo URL from it — see the migration that
+    /// added `brands.logo_domain` for why a domain and not a URL.
+    pub brand_logo_domain: Option<String>,
 }
 
 /// The three fields that never leave the server for anyone but the owner.
@@ -109,7 +113,8 @@ pub async fn list_owned(
             v.cost_visibility AS "cost_visibility: Visibility",
             CASE WHEN va.id IS NULL THEN NULL
                  ELSE b.name || ' ' || m.name || ' ' || va.name
-            END AS catalog_name
+            END AS catalog_name,
+            b.logo_domain AS brand_logo_domain
         FROM vehicles v
         LEFT JOIN vehicle_variants va    ON va.id = v.variant_id
         LEFT JOIN vehicle_generations g  ON g.id = va.generation_id
@@ -149,7 +154,8 @@ pub async fn find_owned(
             v.cost_visibility AS "cost_visibility: Visibility",
             CASE WHEN va.id IS NULL THEN NULL
                  ELSE b.name || ' ' || m.name || ' ' || va.name
-            END AS catalog_name
+            END AS catalog_name,
+            b.logo_domain AS brand_logo_domain
         FROM vehicles v
         LEFT JOIN vehicle_variants va    ON va.id = v.variant_id
         LEFT JOIN vehicle_generations g  ON g.id = va.generation_id

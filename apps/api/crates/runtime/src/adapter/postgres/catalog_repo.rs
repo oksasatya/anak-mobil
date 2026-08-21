@@ -17,6 +17,23 @@ pub struct CatalogEntry {
     pub slug: String,
 }
 
+/// A brand, which unlike the other levels carries where its logo comes from.
+///
+/// Its own struct rather than a field on [`CatalogEntry`]: models,
+/// generations, and variants have no logo and never will, and an Option that
+/// is None on three of four levels is a shape that invites a client to look
+/// for it on all four.
+#[derive(Debug, Clone)]
+pub struct Brand {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    /// The brand primary domain — `toyota.com`. Clients compose their own logo
+    /// URL from it; see the migration that added the column for why the server
+    /// does not store the URL itself. `None` means fall back to initials.
+    pub logo_domain: Option<String>,
+}
+
 /// A generation, which carries the years that let somebody pick theirs.
 #[derive(Debug, Clone)]
 pub struct Generation {
@@ -67,10 +84,10 @@ pub struct SuggestionInput {
 /// # Errors
 ///
 /// Returns [`sqlx::Error`] when the query fails.
-pub async fn brands(conn: &mut PgConnection) -> Result<Vec<CatalogEntry>, sqlx::Error> {
+pub async fn brands(conn: &mut PgConnection) -> Result<Vec<Brand>, sqlx::Error> {
     sqlx::query_as!(
-        CatalogEntry,
-        r#"SELECT id, name, slug FROM brands ORDER BY name"#
+        Brand,
+        r#"SELECT id, name, slug, logo_domain FROM brands ORDER BY name"#
     )
     .fetch_all(conn)
     .await

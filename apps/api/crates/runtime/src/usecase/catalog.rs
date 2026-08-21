@@ -5,7 +5,7 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::adapter::postgres::catalog_repo::{
-    self, CatalogEntry, Generation, SuggestionInput, Variant,
+    self, Brand, CatalogEntry, Generation, SuggestionInput, Variant,
 };
 
 /// How many suggestions one person may file in a day.
@@ -30,7 +30,7 @@ pub enum CatalogError {
 /// # Errors
 ///
 /// [`CatalogError::Database`] when the query fails.
-pub async fn brands(pool: &PgPool) -> Result<Vec<CatalogEntry>, CatalogError> {
+pub async fn brands(pool: &PgPool) -> Result<Vec<Brand>, CatalogError> {
     let mut conn = pool.acquire().await?;
     Ok(catalog_repo::brands(&mut conn).await?)
 }

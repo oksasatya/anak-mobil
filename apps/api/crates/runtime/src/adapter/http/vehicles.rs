@@ -40,6 +40,10 @@ pub struct VehicleResponse {
     pub colour: Option<String>,
     pub mileage_km: Option<i32>,
     pub position: i32,
+    /// The brand primary domain, for the client to build a logo URL from —
+    /// `toyota.com`. Absent when the car is not matched to a catalog variant,
+    /// which is also when there is no brand to show a logo for.
+    pub brand_logo_domain: Option<String>,
     /// Present on the list, absent on the detail — the detail screen asks
     /// `/vehicles/{id}/summary` for the full version rather than carrying
     /// a cut-down copy it would then have to reconcile.
@@ -61,6 +65,7 @@ impl From<crate::adapter::postgres::vehicle_repo::Vehicle> for VehicleResponse {
         Self {
             id: v.id,
             variant_id: v.variant_id,
+            brand_logo_domain: v.brand_logo_domain.clone(),
             name,
             nickname: v.nickname,
             year: v.year,
@@ -477,6 +482,7 @@ mod tests {
             colour: None,
             mileage_km: None,
             position: 0,
+            brand_logo_domain: Some("toyota.com".to_owned()),
             summary: None,
         };
         let json = serde_json::to_string(&response).expect("serialising");
@@ -502,6 +508,7 @@ mod tests {
             position: 0,
             cost_visibility: Visibility::Private,
             catalog_name: None,
+            brand_logo_domain: None,
         };
         assert!(!VehicleResponse::from(unnamed).name.is_empty());
     }
@@ -519,6 +526,7 @@ mod tests {
             position: 0,
             cost_visibility: Visibility::Private,
             catalog_name: Some("Toyota Avanza 1.5 G".to_owned()),
+            brand_logo_domain: Some("toyota.com".to_owned()),
         };
         assert_eq!(VehicleResponse::from(named).name, "Si Putih");
     }
