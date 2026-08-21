@@ -422,13 +422,13 @@ alone is never the signal.
 
 Recommended:
 
-> **Inter**
+> **Plus Jakarta Sans**
 
 Fallback:
 
 ```css
 font-family:
-  Inter,
+  "Plus Jakarta Sans",
   ui-sans-serif,
   system-ui,
   -apple-system,
@@ -472,7 +472,8 @@ Micro        11 / 14 / 500
 ```
 
 In the app, the 650 weight above renders at **600**: React Native's `fontWeight` has no
-650 and the shipped Inter cuts are static. The desktop scale below keeps 650 and 750,
+650 and the shipped Plus Jakarta Sans cuts are static — `@expo-google-fonts` publishes no
+variable face for it. The desktop scale below keeps 650 and 750,
 where the web loads the variable cut.
 
 ## Desktop Web
@@ -2380,7 +2381,7 @@ EVIDENCE-BASED AI
 **Brand:** AnakMobil.id  
 **Primary Color:** Graphite `#1D232A`  
 **Accent:** AnakMobil Orange `#ED491C`  
-**Primary Typeface:** Inter  
+**Primary Typeface:** Plus Jakarta Sans  
 **Core Radius:** 16 px  
 **Primary Mobile Approach:** Clean card-based automotive utility  
 **Preferred Theme:** Both light and dark; dark particularly important for automotive imagery  

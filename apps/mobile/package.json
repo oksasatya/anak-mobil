@@ -7,6 +7,7 @@
     "@anakmobil/assets": "*",
     "@anakmobil/tokens": "*",
     "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo/ui": "~57.0.11",
     "@expo/vector-icons": "^15.0.2",
     "@tanstack/query-sync-storage-persister": "^5.101.4",
