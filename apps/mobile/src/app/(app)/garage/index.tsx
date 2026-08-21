@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
-import { AmCard } from "@/components/display";
 import { TabScreen } from "@/components/shell";
 import { AmEmptyState } from "@/components/state";
 import { useTheme } from "@/theme";
@@ -19,14 +18,13 @@ export default function GarageScreen() {
         Garasi
       </Text>
       <View style={styles.centre}>
-        <AmCard role="working">
-          <AmEmptyState
-            title="Garasi lengkap belum dibuka"
-            body="Nanti di sini ada semua mobil kamu — foto, modifikasi, dan riwayat servis lengkapnya. Untuk sekarang, mobil aktif kamu ada di Beranda."
-            actionLabel="Buka Beranda"
-            onAction={() => router.navigate("/home")}
-          />
-        </AmCard>
+        <AmEmptyState
+          icon="car-sport-outline"
+          title="Garasi lengkap belum dibuka"
+          body="Nanti di sini ada semua mobil kamu — foto, modifikasi, dan riwayat servis lengkapnya. Untuk sekarang, mobil aktif kamu ada di Beranda."
+          actionLabel="Buka Beranda"
+          onAction={() => router.navigate("/home")}
+        />
       </View>
     </TabScreen>
   );

@@ -7,7 +7,7 @@ import {
 } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { AmBrandLockup } from "@/components/display";
 import { AmGround } from "@/components/material";
@@ -32,7 +32,7 @@ function TransparentNavigationTheme({ children }: { readonly children: ReactNode
 }
 
 // Keep the splash screen up rather than flashing the system font for a frame
-// and then reflowing every line when Inter arrives.
+// and then reflowing every line when Plus Jakarta Sans arrives.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // ThemeProvider sits above the route tree so every screen and every
@@ -56,8 +56,8 @@ export default function RootLayout() {
   // stored session sat on a bare mark for the length of a `/me` round trip —
   // and the native splash cannot say anything: it is one static PNG with no
   // wordmark and no way to add one without a new asset. Fonts must land first
-  // or the wordmark would draw in the system face and reflow when Inter
-  // arrives, which is the exact flash `preventAutoHideAsync` exists to stop.
+  // or the wordmark would draw in the system face and reflow when Plus
+  // Jakarta Sans arrives, which is the exact flash `preventAutoHideAsync` exists to stop.
   useEffect(() => {
     if (fontsReady) SplashScreen.hideAsync().catch(() => {});
   }, [fontsReady]);
@@ -104,9 +104,27 @@ export default function RootLayout() {
  * rather than "one moment".
  */
 function LaunchView() {
+  const theme = useTheme();
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
       <AmBrandLockup variant="launch" animate />
+      {/* The brand line, verbatim from docs/design.md §76 and the PRD. It sits
+          at the foot of the screen rather than under the mark: the lockup's
+          entrance is the moment, and a second line arriving beside it competes
+          with the thing it is introducing. */}
+      <Text
+        style={[
+          theme.type.caption,
+          styles.tagline,
+          { color: theme.color.textTertiary, bottom: theme.space[16] },
+        ]}
+      >
+        Mobil lo. Build lo. Komunitas lo.
+      </Text>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  tagline: { position: "absolute", left: 0, right: 0, textAlign: "center" },
+});
