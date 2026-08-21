@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            v.id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.year,\n            v.colour,\n            v.mileage_km,\n            v.position,\n            v.cost_visibility AS \"cost_visibility: Visibility\",\n            CASE WHEN va.id IS NULL THEN NULL\n                 ELSE b.name || ' ' || m.name || ' ' || va.name\n            END AS catalog_name\n        FROM vehicles v\n        LEFT JOIN vehicle_variants va    ON va.id = v.variant_id\n        LEFT JOIN vehicle_generations g  ON g.id = va.generation_id\n        LEFT JOIN vehicle_models m       ON m.id = g.model_id\n        LEFT JOIN brands b               ON b.id = m.brand_id\n        WHERE v.owner_id = $1\n        ORDER BY v.position, v.id\n        ",
+  "query": "\n        SELECT\n            v.id,\n            v.variant_id,\n            v.nickname,\n            v.described_as,\n            v.year,\n            v.colour,\n            v.mileage_km,\n            v.position,\n            v.cost_visibility AS \"cost_visibility: Visibility\",\n            CASE WHEN va.id IS NULL THEN NULL\n                 ELSE b.name || ' ' || m.name || ' ' || va.name\n            END AS catalog_name,\n            b.logo_domain AS brand_logo_domain\n        FROM vehicles v\n        LEFT JOIN vehicle_variants va    ON va.id = v.variant_id\n        LEFT JOIN vehicle_generations g  ON g.id = va.generation_id\n        LEFT JOIN vehicle_models m       ON m.id = g.model_id\n        LEFT JOIN brands b               ON b.id = m.brand_id\n        WHERE v.owner_id = $1\n        ORDER BY v.position, v.id\n        ",
   "describe": {
     "columns": [
       {
@@ -118,6 +118,17 @@
         "name": "catalog_name",
         "type_info": "Text",
         "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "brand_logo_domain",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "brands",
+            "name": "logo_domain"
+          }
+        }
       }
     ],
     "parameters": {
@@ -135,8 +146,9 @@
       true,
       false,
       false,
-      null
+      null,
+      true
     ]
   },
-  "hash": "8ce3b7e4dcf944b4bdba9ab8e8e30924c66fa92de2894241769e87f708346134"
+  "hash": "4b0b843681143316819486808101c16d2798321b55b87f7e3f0b20decbb4cbf5"
 }

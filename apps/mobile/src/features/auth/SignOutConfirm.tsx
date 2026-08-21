@@ -8,6 +8,13 @@ import { useTheme } from "@/theme";
 
 export interface SignOutConfirmProps {
   readonly label?: string;
+  /**
+   * How the TRIGGER looks. The confirmation inside the sheet is always the
+   * filled `destructive` — that is where the alarm belongs. On the Profile
+   * tab the trigger is `destructive-quiet`, because a filled red block is not
+   * what a permanently-visible "Keluar" should look like.
+   */
+  readonly variant?: "destructive" | "destructive-quiet";
 }
 
 /**
@@ -17,7 +24,7 @@ export interface SignOutConfirmProps {
  * store, one redirect. This component's entire job is to ask once and call it
  * once. It clears nothing, deletes nothing, and navigates nowhere itself.
  */
-export function SignOutConfirm({ label = "Keluar" }: SignOutConfirmProps) {
+export function SignOutConfirm({ label = "Keluar", variant = "destructive" }: SignOutConfirmProps) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,7 +58,7 @@ export function SignOutConfirm({ label = "Keluar" }: SignOutConfirmProps) {
 
   return (
     <>
-      <AmButton label={label} variant="destructive" onPress={() => setOpen(true)} />
+      <AmButton label={label} variant={variant} onPress={() => setOpen(true)} />
       <AmBottomSheet
         visible={open}
         // Guarded by `busy`. "Batal" is already disabled mid-transaction, but

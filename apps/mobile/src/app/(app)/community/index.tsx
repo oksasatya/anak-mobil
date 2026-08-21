@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
-import { AmCard } from "@/components/display";
 import { TabScreen } from "@/components/shell";
 import { AmEmptyState } from "@/components/state";
 import { useTheme } from "@/theme";
@@ -20,14 +19,13 @@ export default function CommunityScreen() {
         Komunitas
       </Text>
       <View style={styles.centre}>
-        <AmCard role="working">
-          <AmEmptyState
-            title="Komunitas belum dimulai"
-            body="Nanti di sini ada klub, diskusi, dan tanya-jawab sesama pemilik mobil. Yang pertama mengisi garasinya jadi yang pertama punya sesuatu untuk dibagikan."
-            actionLabel="Lihat mobil kamu"
-            onAction={() => router.navigate("/home")}
-          />
-        </AmCard>
+        <AmEmptyState
+          icon="people-outline"
+          title="Komunitas belum dimulai"
+          body="Nanti di sini ada klub, diskusi, dan tanya-jawab sesama pemilik mobil. Yang pertama mengisi garasinya jadi yang pertama punya sesuatu untuk dibagikan."
+          actionLabel="Lihat mobil kamu"
+          onAction={() => router.navigate("/home")}
+        />
       </View>
     </TabScreen>
   );

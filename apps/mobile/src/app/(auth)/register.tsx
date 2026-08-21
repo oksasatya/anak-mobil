@@ -9,6 +9,7 @@ import { asApiError, isSignInFailure, useRegister } from "@/features/auth/api";
 import { registerConflictOf } from "@/features/auth/conflict";
 import { setPendingEmail } from "@/features/auth/pendingEmail";
 import { ConsentCheckbox } from "@/features/auth/ConsentCheckbox";
+import { FormNotice } from "@/features/auth/FormNotice";
 import { PasswordStrength } from "@/features/auth/PasswordStrength";
 import { fieldErrorsOf, registerSchema, USERNAME_PATTERN } from "@/features/auth/schemas";
 import {
@@ -190,14 +191,23 @@ export default function Register() {
           gap: theme.space[8],
         }}
       >
-        <View style={{ gap: theme.space[5] }}>
+        <View style={{ gap: theme.space[6] }}>
           <AmBrandLockup variant="header" />
-          <Text
-            accessibilityRole="header"
-            style={[theme.type["body-lg"], { color: theme.color.textSecondary }]}
-          >
-            Bikin garasi digital kamu. Gratis, selamanya.
-          </Text>
+          {/* Headline and support line, not one sentence set as body — the
+              same correction login.tsx got. "Gratis, selamanya" is the
+              promise, and it earns its own line rather than trailing the
+              headline in a comma. */}
+          <View style={{ gap: theme.space[2] }}>
+            <Text
+              accessibilityRole="header"
+              style={[theme.type.h1, { color: theme.color.textPrimary }]}
+            >
+              Bikin garasi digital kamu.
+            </Text>
+            <Text style={[theme.type.body, { color: theme.color.textSecondary }]}>
+              Gratis, selamanya.
+            </Text>
+          </View>
         </View>
 
         {/* No card — same reasoning as login.tsx. */}
@@ -259,15 +269,7 @@ export default function Register() {
 
           <ConsentCheckbox checked={consent} onChange={setConsent} label={CONSENT_LABEL} />
 
-          {formError ? (
-            <Text
-              accessibilityLiveRegion="polite"
-              accessibilityRole="alert"
-              style={[theme.type.caption, { color: theme.color.semanticText.danger }]}
-            >
-              {formError}
-            </Text>
-          ) : null}
+          {formError ? <FormNotice tone="danger" message={formError} /> : null}
 
           <AmButton
             label={pendingTokens ? "Lanjutkan" : "Daftar"}

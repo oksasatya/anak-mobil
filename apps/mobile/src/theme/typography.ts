@@ -16,11 +16,21 @@ import type { TypeName } from "./types";
 export const numeric: TextStyle = { fontVariant: ["tabular-nums"] };
 
 /**
+ * The uppercase micro-label — docs/design.md §12's `.am-label`. Entity types
+ * (BUILD, PROBLEM), section headers (MOBIL AKTIF, ODOMETER), card kickers.
+ *
+ * Spread onto `theme.type.micro`, never used alone: like `numeric` it carries
+ * no size, weight, or colour. 0.08em at 11px is 0.88pt, and React Native's
+ * `letterSpacing` is in points rather than ems.
+ */
+export const kicker: TextStyle = { textTransform: "uppercase", letterSpacing: 0.88 };
+
+/**
  * The mobile type scale as React Native text styles.
  *
  * `fontFamily` carries the weight because that is how a static-cut font
  * family works on both platforms; `fontWeight` is set alongside it so that
- * the system font still renders at roughly the right weight if Inter fails
+ * the system font still renders at roughly the right weight if the face fails
  * to load.
  */
 export function buildTypeScale(): Record<TypeName, TextStyle> {

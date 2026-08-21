@@ -7,6 +7,7 @@ import { AmBrandLockup } from "@/components/display";
 import { AmButton, AmTextField } from "@/components/input";
 import { asApiError, isSignInFailure, useLogin } from "@/features/auth/api";
 import { takePendingEmail } from "@/features/auth/pendingEmail";
+import { FormNotice } from "@/features/auth/FormNotice";
 import { fieldErrorsOf, loginSchema } from "@/features/auth/schemas";
 import { formatCountdown, useCountdown } from "@/features/auth/useCountdown";
 import { resumeSignIn } from "@/shared";
@@ -156,14 +157,23 @@ export default function Login() {
           gap: theme.space[8],
         }}
       >
-        <View style={{ gap: theme.space[5] }}>
+        <View style={{ gap: theme.space[6] }}>
           <AmBrandLockup variant="header" />
-          <Text
-            accessibilityRole="header"
-            style={[theme.type["body-lg"], { color: theme.color.textSecondary }]}
-          >
-            Masuk ke garasi kamu.
-          </Text>
+          {/* The headline is the H1 and the line under it is support. The
+              screen used to lead with the support line set as body, which left
+              the page with no headline at all and the wordmark doing a job
+              type should be doing. */}
+          <View style={{ gap: theme.space[2] }}>
+            <Text
+              accessibilityRole="header"
+              style={[theme.type.h1, { color: theme.color.textPrimary }]}
+            >
+              Masuk ke garasi kamu.
+            </Text>
+            <Text style={[theme.type.body, { color: theme.color.textSecondary }]}>
+              Riwayat servis dan build mobilmu menunggu.
+            </Text>
+          </View>
         </View>
 
         {/* No card. Its border is `#29313A` on a `#0F141A` ground — barely
@@ -195,21 +205,20 @@ export default function Login() {
             textContentType="password"
           />
           {formError ? (
-            <Text
-              accessibilityLiveRegion="polite"
-              accessibilityRole="alert"
-              style={[theme.type.caption, { color: theme.color.semanticText.danger }]}
-            >
-              {formError}
-            </Text>
+            // An interrupted sign-in is NOT a failure: the credentials are
+            // accepted and already on the device, and only the last step has
+            // to be retried. Dressing it in the same red as a refused password
+            // tells the person their login did not work when it did.
+            <FormNotice
+              tone={formError === SIGN_IN_INTERRUPTED ? "info" : "danger"}
+              message={formError}
+            />
           ) : null}
           {waiting ? (
-            <Text
-              accessibilityLiveRegion="polite"
-              style={[theme.type.caption, { color: theme.color.semanticText.warning }]}
-            >
-              Terlalu banyak percobaan. Coba lagi dalam {formatCountdown(countdown.remaining)}.
-            </Text>
+            <FormNotice
+              tone="warning"
+              message={`Terlalu banyak percobaan. Coba lagi dalam ${formatCountdown(countdown.remaining)}.`}
+            />
           ) : null}
           <AmButton
             // `accent`, not the graphite default. The design system reserves

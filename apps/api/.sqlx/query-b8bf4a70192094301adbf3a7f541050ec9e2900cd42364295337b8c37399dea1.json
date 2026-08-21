@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, slug FROM brands ORDER BY name",
+  "query": "SELECT id, name, slug, logo_domain FROM brands ORDER BY name",
   "describe": {
     "columns": [
       {
@@ -35,6 +35,17 @@
             "name": "slug"
           }
         }
+      },
+      {
+        "ordinal": 3,
+        "name": "logo_domain",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "brands",
+            "name": "logo_domain"
+          }
+        }
       }
     ],
     "parameters": {
@@ -43,8 +54,9 @@
     "nullable": [
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "23476101a4e6a530997491ea61dd2c8f4d96bf769f76ae6434b04f5bc0397f69"
+  "hash": "b8bf4a70192094301adbf3a7f541050ec9e2900cd42364295337b8c37399dea1"
 }

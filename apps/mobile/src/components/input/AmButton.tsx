@@ -2,7 +2,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } 
 
 import { useTheme } from "@/theme";
 
-export type AmButtonVariant = "primary" | "accent" | "secondary" | "ghost" | "destructive";
+export type AmButtonVariant =
+  "primary" | "accent" | "secondary" | "ghost" | "destructive" | "destructive-quiet";
 export type AmButtonSize = "sm" | "md" | "lg";
 
 export interface AmButtonProps {
@@ -45,6 +46,17 @@ export function AmButton({
     ghost: { background: "transparent", label: theme.color.accentText },
     // §42: destructive uses semantic danger, never orange.
     destructive: { background: theme.color.semantic.danger, label: theme.color.onGraphite },
+    // The RESTING form of a destructive action — an outline that reads red
+    // rather than a filled red block. A permanent "Keluar" sitting on the
+    // Profile tab is not an alarm and should not be dressed as one; the filled
+    // variant is what the confirmation sheet uses, where the alarm is the
+    // point. The label is `semanticText.danger`, never the raw `semantic`
+    // fill, which is 3.79:1 as text on the dark surface and fails AA.
+    "destructive-quiet": {
+      background: "transparent",
+      label: theme.color.semanticText.danger,
+      border: theme.color.borderStrong,
+    },
   };
   // A DISABLED button is re-coloured, not faded.
   //

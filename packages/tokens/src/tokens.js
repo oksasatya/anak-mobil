@@ -130,13 +130,14 @@ export const radius = {
 /**
  * Typography.
  *
- * Inter, chosen for legibility of dense spec data on a phone. Numeric
+ * Plus Jakarta Sans (Tokotype), commissioned for Jakarta's city identity: local
+ * character with the neutral geometric forms dense spec data needs. Numeric
  * values — `18×8.5 ET40`, `225/40 R18`, `146,120 KM` — should be set with
  * tabular figures so columns of them line up.
  */
 export const typography = {
   fontFamily: [
-    "Inter",
+    '"Plus Jakarta Sans"',
     "ui-sans-serif",
     "system-ui",
     "-apple-system",
@@ -151,8 +152,10 @@ export const typography = {
  * Composite type tokens — the `font` shorthand minus the family, which the
  * generator appends as `var(--font-sans)`. Used as `font: var(--type-hero);`.
  *
- * Two scales, per docs/design.md §11–12. Weights 650 and 750 are why the
- * font must be the variable cut — no static Inter provides them.
+ * Two scales, per docs/design.md §11–12. Weights 650 and 750 need the
+ * variable cut — no static Plus Jakarta Sans face provides them, so the web
+ * loads the variable font and the app substitutes 600 (see
+ * apps/mobile/src/theme/fonts.ts).
  */
 export const type = {
   hero: "750 56px/64px",

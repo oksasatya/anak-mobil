@@ -37,6 +37,31 @@ impl From<crate::adapter::postgres::catalog_repo::CatalogEntry> for EntryRespons
     }
 }
 
+/// A brand, with where its logo comes from.
+///
+/// `logo_domain` is a DOMAIN and not a URL, and the client composes the rest.
+/// The server has no opinion about the size, the format, the CDN, or the API
+/// key any one client needs, and encoding one here would make every client
+/// take the mobile app's answer. See the migration that added the column.
+#[derive(Debug, Serialize)]
+pub struct BrandResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub logo_domain: Option<String>,
+}
+
+impl From<crate::adapter::postgres::catalog_repo::Brand> for BrandResponse {
+    fn from(brand: crate::adapter::postgres::catalog_repo::Brand) -> Self {
+        Self {
+            id: brand.id,
+            name: brand.name,
+            slug: brand.slug,
+            logo_domain: brand.logo_domain,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct GenerationResponse {
     pub id: Uuid,
@@ -196,7 +221,7 @@ impl SuggestionRequest {
 pub async fn brands(
     State(state): State<AppState>,
     _caller: Authenticated,
-) -> Result<ApiResponse<Vec<EntryResponse>>, ApiError> {
+) -> Result<ApiResponse<Vec<BrandResponse>>, ApiError> {
     let entries = catalog::brands(&state.pool).await.map_err(to_api_error)?;
     Ok(ApiResponse::ok(
         entries.into_iter().map(Into::into).collect(),
