@@ -302,17 +302,21 @@ mb-reverse: ## Bridge the API port into an attached Android device (localhost:80
 		&& echo 'adb reverse tcp:8080 -> host (localhost:8080 now reaches the API)' \
 		|| echo 'no Android device attached — start one, then re-run `make mb-reverse`'
 
+# LANG/LC_ALL are not cosmetic. Without a UTF-8 locale CocoaPods crashes inside
+# its OWN error reporter — `Encoding::CompatibilityError` in `unicode_normalize`
+# — which swallows whatever the real error was and prints a Ruby backtrace
+# instead. Diagnosing that costs an hour; setting it costs a line.
 mb-run-dev: ## Build+run the development variant on a device (p=ios|android)
 	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; set +a; \
-		cd $(MOBILE_DIR) && APP_VARIANT=development bunx expo run:$(p)
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=development bunx expo run:$(p)
 
 mb-run-preview: ## Build+run the preview variant on a device (p=ios|android)
 	@set -a; [ -f $(MOBILE_DIR)/.env.preview ] && . ./$(MOBILE_DIR)/.env.preview; set +a; \
-		cd $(MOBILE_DIR) && APP_VARIANT=preview bunx expo run:$(p)
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=preview bunx expo run:$(p)
 
 mb-run-prod: ## Build+run the production variant on a device (p=ios|android)
 	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; set +a; \
-		cd $(MOBILE_DIR) && APP_VARIANT=production bunx expo run:$(p)
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=production bunx expo run:$(p)
 
 # --- Formatting ---------------------------------------------------------------
 #
