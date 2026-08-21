@@ -3,7 +3,6 @@ import { Link } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import { SignOutConfirm } from "@/features/auth/SignOutConfirm";
 import { useSession } from "@/shared";
 import { useTheme } from "@/theme";
 
@@ -74,12 +73,6 @@ export default function Healthcheck() {
       <Text style={[styles.row, { color: theme.color.textPrimary }]}>
         Masuk sebagai: {user?.displayName ?? user?.username ?? "—"}
       </Text>
-      {/* TEMPORARY mount. AM-51 AC4 says sign-out lives "dari setelan", and the
-          settings screen is Plan C's. This sits on the healthcheck screen only
-          so the flow is exercisable before that exists. Plan C moves it into
-          the profile tab and DELETES this line — shipping both would put two
-          destructive sign-out controls in the app. */}
-      <SignOutConfirm />
     </View>
   );
 }

@@ -68,9 +68,25 @@ export function useActiveVehicleId(): string | null;
 export function setActiveVehicleId(id: string | null): void;
 ```
 
-**Two assumptions this plan makes about Plan A, to be checked in Task 1 step 1 and corrected in
-this file if wrong** (§29 step 1 — a correction to the plan is written down, not carried in
-someone's head):
+### Both assumptions are now ANSWERED — verified 2026-08-21, before task 1 was dispatched
+
+Task 1's step 1 is a confirmation pass, not an investigation. One of the two was **wrong**.
+
+1. **`apiRequest<T>` resolves the envelope's `data`, unwrapped.** `apiRequest<Vehicle[]>("/vehicles")`
+   gives a `Vehicle[]`, never `{meta, data, error}`. Every call site in this plan is correct as
+   written. (`apps/mobile/src/shared/api/client.ts` — its own doc comment says so.)
+2. **The module path for the active-vehicle hooks is WRONG in this plan.** They are not in
+   `@/shared/session/store`; they live in **`apps/mobile/src/shared/vehicle/activeVehicle.ts`**
+   (`useActiveVehicleId` at :32, `setActiveVehicleId` at :37) and are re-exported from the barrel
+   at `apps/mobile/src/shared/index.ts:21`.
+
+**Import from the barrel `@/shared`, not from any deep path.** That barrel's own header states that
+Plans B, C, and D import from it and from nowhere else, so the file layout behind it can move.
+Plan B's writers hit this three separate times by trusting a deep path a plan had written down.
+
+The original text of these two assumptions follows, kept because the *habit* it encodes is right —
+a plan's guess about another plan's code is checked before it is built on, and the correction is
+written here rather than carried in someone's head:
 
 1. **`apiRequest<T>` resolves the envelope's `data` payload**, not the whole
    `{ meta, data, error }` envelope. If it resolves the envelope, every `apiRequest<T>` call site
@@ -97,6 +113,11 @@ The button therefore renders `null` while the registry is empty. Task 5 verifies
 temporarily pointing one entry at the existing `/catalog` route, screenshotting it, and reverting.
 
 ---
+
+> **Every cross-module import in this plan's code blocks goes through the barrel `@/shared`.**
+> The snippets originally showed deep paths (`@/shared/api/client`, `@/shared/session/store`, …),
+> which is what Plan B's writers tripped over three separate times. The barrel's own header states
+> that Plans B, C, and D import from it and from nowhere else. Corrected 2026-08-21.
 
 ## File structure
 
@@ -151,11 +172,12 @@ and a screen written against an invented shape is the failure mode this task exi
 - Create: `apps/mobile/src/features/garage/queries.ts`
 - Create: `apps/mobile/src/features/garage/useActiveVehicle.ts`
 - Create: `apps/mobile/src/features/shell/errorCopy.ts`
-- Test: none — `apps/mobile` has no test runner and this work does not add one.
+- Create: `apps/mobile/test/garage-format.test.ts` — the formatters ARE testable now; see the
+  corrected TDD verdict below.
 
 **Interfaces:**
-- Consumes: `apiRequest` (`@/shared/api/client`), `ApiError` (`@/shared/api/errors`),
-  `useActiveVehicleId` / `setActiveVehicleId` (`@/shared/session/store`), `useQuery`
+- Consumes, ALL from the barrel `@/shared`: `apiRequest`, the `ApiError` type,
+  `useActiveVehicleId` / `setActiveVehicleId`. Plus `useQuery`
   (`@tanstack/react-query`) — all from Plan A.
 - Produces:
   ```ts
@@ -170,9 +192,24 @@ and a screen written against an invented shape is the failure mode this task exi
   export function errorBody(error: unknown): string;
   ```
 
-**TDD: no** — `apps/mobile` has no test runner (spec, §Testing). The formatters are pure and are
-written so they can be covered the day a runner arrives; until then they are verified by reading
-their output on the Home screen in Task 2, against a real vehicle with real service history.
+**TDD: yes for the three formatters and `errorBody`; no for the query hooks.**
+
+**CORRECTED 2026-08-21.** The original verdict said "`apps/mobile` has no test runner". That was
+true when this plan was written and is false now: Plan A added `bun test test/`, wired into
+`make mb-check` and CI, and Plan B added five more suites. The same stale sentence appears on all
+five of this plan's tasks and is corrected on each.
+
+`formatRupiah`, `formatKilometres`, `formatShortDate`, and `errorBody` are pure functions with a
+checkable contract — Indonesian money and date formatting is precisely the class of thing that is
+wrong at a boundary and invisible on a screen. Write `apps/mobile/test/garage-format.test.ts`
+FIRST, failing, covering at minimum: a decimal string with and without fractional rupiah, zero,
+a null total, a value large enough to need thousands separators, kilometres at 0 / 3 digits /
+7 digits, an ISO date at a month boundary, and `errorBody` for each `ApiErrorKind` plus a non-
+`ApiError` throw. Confirm each fails for the intended reason before implementing.
+
+`useVehicles` and `useActiveVehicle` stay verified-by-running: the suite has **no React renderer**
+and no `@testing-library`, so a hook cannot be rendered in a test. Keep any pure logic inside them
+extractable if it grows.
 
 **Acceptance criteria:** `make mb-check` is green with these five files present; `useVehicles`
 issues exactly one request to `GET /vehicles`; `useActiveVehicle` returns the stored vehicle when
@@ -308,7 +345,7 @@ export function formatShortDate(iso: string): string {
 ```ts
 import { useQuery } from "@tanstack/react-query";
 
-import { apiRequest } from "@/shared/api/client";
+import { apiRequest } from "@/shared";
 
 import type { Vehicle } from "./types";
 
@@ -342,7 +379,7 @@ export function useVehicles() {
 ```ts
 import { useEffect } from "react";
 
-import { setActiveVehicleId, useActiveVehicleId } from "@/shared/session/store";
+import { setActiveVehicleId, useActiveVehicleId } from "@/shared";
 
 import type { Vehicle } from "./types";
 
@@ -374,7 +411,7 @@ export function useActiveVehicle(vehicles: readonly Vehicle[] | undefined): Vehi
 `apps/mobile/src/features/shell/errorCopy.ts`:
 
 ```ts
-import type { ApiError } from "@/shared/api/errors";
+import type { ApiError } from "@/shared";
 
 /**
  * Plan A's `ApiError` is a plain shape rather than an `Error` subclass, so a
@@ -432,8 +469,11 @@ task after this one.
    transparent so AmGround shows through. Do not undo it. A tab bar must not
    reintroduce an opaque background that hides the ground.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner: `bun test test/`, run by `make mb-check` and
+   by CI. Suites live in apps/mobile/test/ and use `mock.module` from
+   "bun:test". There is NO React renderer and no @testing-library, so a
+   component or a hook CANNOT be rendered in a test — pure functions can and
+   must be. tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -474,7 +514,7 @@ every primitive you will use here.
 - Create: `apps/mobile/src/app/(app)/home/index.tsx`
 - Create: `apps/mobile/src/features/garage/VehicleCard.tsx`
 - Modify: `apps/mobile/package.json`, `bun.lock` — one dependency, via `bun x expo install`.
-- Test: none (no runner).
+- Test: none — this task's deliverable is a rendered navigator and screen, and the suite has no React renderer. Pure logic, if any emerges, goes in a react-native-free file with a test.
 
 **Interfaces:**
 - Consumes: Task 1's `useVehicles`, `useActiveVehicle`, `Vehicle`, `formatRupiah`,
@@ -490,7 +530,8 @@ every primitive you will use here.
   // route: /home
   ```
 
-**TDD: no** — verify by running. There is no test runner, and the deliverable is a rendered
+**TDD: no** — verify by running. A runner exists (corrected — see Task 1) but it has **no React
+renderer**, and the deliverable is a rendered
 surface whose failure modes (an opaque tab bar over the ground, content under the bar, a state that
 never appears) are visible and are invisible to a type checker.
 
@@ -834,7 +875,7 @@ import { useVehicles } from "@/features/garage/queries";
 import { useActiveVehicle } from "@/features/garage/useActiveVehicle";
 import { VehicleCard } from "@/features/garage/VehicleCard";
 import { errorBody } from "@/features/shell/errorCopy";
-import { setActiveVehicleId, useSession } from "@/shared/session/store";
+import { setActiveVehicleId, useSession } from "@/shared";
 import { useTheme } from "@/theme";
 
 /**
@@ -983,8 +1024,11 @@ so run it again at the end of Task 3 and record the result there:
    transparent so AmGround shows through. Do not undo it. A tab bar must not
    reintroduce an opaque background that hides the ground.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner: `bun test test/`, run by `make mb-check` and
+   by CI. Suites live in apps/mobile/test/ and use `mock.module` from
+   "bun:test". There is NO React renderer and no @testing-library, so a
+   component or a hook CANNOT be rendered in a test — pure functions can and
+   must be. tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -1022,13 +1066,14 @@ rather than deeper into the same absence. That is Beranda, the one tab with cont
 - Create: `apps/mobile/src/app/(app)/explore/_layout.tsx`, `.../explore/index.tsx`
 - Create: `apps/mobile/src/app/(app)/community/_layout.tsx`, `.../community/index.tsx`
 - Modify: `apps/mobile/src/app/(app)/_layout.tsx` — add three `<Tabs.Screen>` after `home`
-- Test: none (no runner).
+- Test: none — this task's deliverable is a rendered navigator and screen, and the suite has no React renderer. Pure logic, if any emerges, goes in a react-native-free file with a test.
 
 **Interfaces:**
 - Consumes: `TabScreen`, `TabStack` (Task 2); `router` from `expo-router`.
 - Produces: routes `/garage`, `/explore`, `/community`.
 
-**TDD: no** — verify by running. Three screens of copy and one navigator edit; there is no runner
+**TDD: no** — verify by running. Three screens of copy and one navigator edit; the runner that
+now exists has no React renderer
 and nothing here has a contract a test could hold.
 
 **Acceptance criteria:** four tabs in the declared order Beranda · Garasi · Jelajah · Komunitas;
@@ -1282,8 +1327,11 @@ check. Put that sentence in the AM-16 comment rather than letting "AC1 ✓" impl
    transparent so AmGround shows through. Do not undo it. A tab bar must not
    reintroduce an opaque background that hides the ground.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner: `bun test test/`, run by `make mb-check` and
+   by CI. Suites live in apps/mobile/test/ and use `mock.module` from
+   "bun:test". There is NO React renderer and no @testing-library, so a
+   component or a hook CANNOT be rendered in a test — pure functions can and
+   must be. tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -1319,14 +1367,14 @@ AM-51 close on a criterion nobody exercised.
 - Create: `apps/mobile/src/app/(app)/profile/_layout.tsx`
 - Create: `apps/mobile/src/app/(app)/profile/index.tsx`
 - Modify: `apps/mobile/src/app/(app)/_layout.tsx` — add the fifth `<Tabs.Screen>`, last
-- Test: none (no runner).
+- Test: none — this task's deliverable is a rendered navigator and screen, and the suite has no React renderer. Pure logic, if any emerges, goes in a react-native-free file with a test.
 
 **Interfaces:**
 - Consumes: `useSession` (`@/shared/session/store`), `signOut` (`@/shared/session/signOut`),
   `TabScreen`, `TabStack`, `AmAvatar`, `AmBottomSheet`, `AmButton`, `AmCard`, `AmSkeleton`.
 - Produces: route `/profile`.
 
-**TDD: no** — verify by running. The one branch worth testing is `signOut`'s epoch transaction,
+**TDD: no** — verify by running; the runner has no React renderer. The one branch worth testing is `signOut`'s epoch transaction,
 and that is Plan A's code with Plan A's verdict.
 
 **Acceptance criteria:** the tab shows the signed-in person's display name, username, and email
@@ -1359,8 +1407,8 @@ import { AmAvatar, AmBottomSheet, AmCard } from "@/components/display";
 import { AmButton } from "@/components/input";
 import { TabScreen } from "@/components/shell";
 import { AmSkeleton } from "@/components/state";
-import { signOut } from "@/shared/session/signOut";
-import { useSession } from "@/shared/session/store";
+import { signOut } from "@/shared";
+import { useSession } from "@/shared";
 import { useTheme } from "@/theme";
 
 /**
@@ -1513,8 +1561,11 @@ Then AM-51 AC4, as steps:
    transparent so AmGround shows through. Do not undo it. A tab bar must not
    reintroduce an opaque background that hides the ground.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner: `bun test test/`, run by `make mb-check` and
+   by CI. Suites live in apps/mobile/test/ and use `mock.module` from
+   "bun:test". There is NO React renderer and no @testing-library, so a
+   component or a hook CANNOT be rendered in a test — pure functions can and
+   must be. tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -1555,7 +1606,7 @@ edit anywhere.
 - Create: `apps/mobile/src/components/shell/AddButton.tsx`
 - Modify: `apps/mobile/src/components/shell/TabScreen.tsx` — host the button
 - Modify: `apps/mobile/src/components/shell/index.ts` — export it
-- Test: none (no runner).
+- Test: none — this task's deliverable is a rendered navigator and screen, and the suite has no React renderer. Pure logic, if any emerges, goes in a react-native-free file with a test.
 
 **Interfaces:**
 - Consumes: Task 1's `useVehicles`, `useActiveVehicle`; Plan A's `setActiveVehicleId`;
@@ -1568,7 +1619,7 @@ edit anywhere.
   export function AddButton(): React.JSX.Element | null;
   ```
 
-**TDD: no** — verify by running. The one rule worth a test (`ADD_ACTIONS` empty ⇒ no button) is a
+**TDD: no** — verify by running; the runner has no React renderer. The one rule worth a test (`ADD_ACTIONS` empty ⇒ no button) is a
 render assertion, and there is no runner to hold it.
 
 **Acceptance criteria:**
@@ -1633,7 +1684,7 @@ import { AmButton, AmSelect } from "@/components/input";
 import { useVehicles } from "@/features/garage/queries";
 import { useActiveVehicle } from "@/features/garage/useActiveVehicle";
 import { ADD_ACTIONS } from "@/features/shell/addActions";
-import { setActiveVehicleId } from "@/shared/session/store";
+import { setActiveVehicleId } from "@/shared";
 import { useTheme } from "@/theme";
 
 /**
@@ -1832,8 +1883,11 @@ state — rather than nesting. Do not fix it by reaching for a native picker.
    transparent so AmGround shows through. Do not undo it. A tab bar must not
    reintroduce an opaque background that hides the ground.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. apps/mobile HAS a test runner: `bun test test/`, run by `make mb-check` and
+   by CI. Suites live in apps/mobile/test/ and use `mock.module` from
+   "bun:test". There is NO React renderer and no @testing-library, so a
+   component or a hook CANNOT be rendered in a test — pure functions can and
+   must be. tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -1942,11 +1996,11 @@ whose destination does not; and does any style carry a value that did not come f
 
 | Task | Status | Notes |
 |---|---|---|
-| 1 — Vehicle data layer and formatters | not started | |
-| 2 — Tab group and Home tab | not started | |
-| 3 — Garasi, Jelajah, Komunitas | not started | |
-| 4 — Profile tab | not started | |
-| 5 — Global add action | not started | |
+| 1 — Vehicle data layer and formatters | **done** | `types/format/queries/useActiveVehicle/errorCopy` created. Both Plan A assumptions confirmed — assumption 2 was already corrected in this file before dispatch (the hooks are in `@/shared/vehicle/activeVehicle`, not `session/store`). 17 tests, written red first, one mutation-proven (`groupThousands` removed → 4 red, restored → green). Controller gate: `format` EXIT=0, `mb-check` EXIT=0, **86 pass 0 fail**. Reviewed on `opus`. |
+| 2 — Tab group and Home tab | **done** | `<Tabs>` from `expo-router/js-tabs` (the `"expo-router"` re-export is deprecated in SDK 57) replaced `<Stack>` **inside** the existing `<AppGate>`; gate untouched. `(app)/index.tsx` kept as a hidden route (`href: null`) rather than deleted, so Plan B's `TEMPORARY` sign-out mount survives until Task 4 gives it a real home. `@expo/vector-icons@15.1.1` added via `bun x expo install`. Controller gate: `format` EXIT=0, `mb-check` EXIT=0, **86 pass 0 fail**, `--frozen-lockfile` EXIT=0. Reviewed on `opus`. |
+| 3 — Garasi, Jelajah, Komunitas | **done** | Three tab directories, each its own `_layout.tsx` + `index.tsx`; three `<Tabs.Screen>` entries inserted between `home` and the hidden `index`. Order: **Beranda · Garasi · Jelajah · Komunitas**. `<AppGate>` untouched; `session.test.ts` green in isolation (8 pass). No empty state left actionless — `AmEmptyState` requires an action by design, and all three point at `/home`, a real shipped destination. Controller gate: `format` EXIT=0, `mb-check` EXIT=0, **86 pass 0 fail**. **Review batched into Task 4's** (see the note below). |
+| 4 — Profile tab | **done** | Profile tab: identity card + `<SignOutConfirm />` (Plan B's, reused — the plan's Step 2 snippet hand-rolled a second sign-out sheet and was correctly refused). **Plan B's `TEMPORARY` mount removed from the healthcheck**, so exactly one sign-out control exists app-wide. `resolveProfileIdentity` extracted react-native-free with 5 tests, every one mutation-verified load-bearing. Reviewed on `opus` (batched with Tasks 3 and 5). |
+| 5 — Global add action | **done** | `ADD_ACTIONS` ships **empty** and `AddButton` returns `null` before any hook runs — no query fires on the four tabs that do not need it. Writer ran the plan's Step 5 verification live: pointed one entry at `/catalog`, saw the button, the pre-filled sheet title, and the nested `AmSelect` working (**the plan's flagged nested-modal risk did not materialise** — no fallback needed), then reverted to empty. Reviewed on `opus` (batched). |
 
 Record here, per task: corrections the plan got wrong, deliberate cuts, defects found and how they
 were closed, and the screenshots taken. This file is the resume map after compaction; the chat is
@@ -1963,3 +2017,29 @@ finding that changes a column, constraint, or public contract, which is fixed im
 
 | Task | Severity | File:line | Failure scenario | Smallest fix | Closed by |
 |---|---|---|---|---|---|
+| 2 | `correctness` | `(app)/index.tsx`, `(app)/_layout.tsx:105` | **The signed-in app opened on the AM-14 healthcheck, not on Beranda.** `/(app)` resolves to the group's `index` route, and `/(app)` is what every entry path targets — `AuthGate` after sign-in, `OnboardingGate` on completion, and `app/index.tsx` on every cold start with a live session. `unstable_settings = { anchor: "home" }` does **not** change that: the anchor becomes `initialRouteName`, and expo-router *prepends* it while keeping the matched route focused (`getStateFromPath.js:469-479`), so `/(app)` yielded `{index: 1, routes: [home, index]}`. The first screen after signing in was "Status Koneksi API" with the API base URL on display, **no tab highlighted** (its `tabBarButton` is null), and its rows under the tab bar because it does not use `TabScreen`. Traced through router source by the reviewer, not observed — and it got past the gates because no screenshot of the post-sign-in landing was ever taken. | Move the healthcheck body to `(app)/healthcheck.tsx` (also hidden) and make `(app)/index.tsx` a one-line `<Redirect href="/home" />`. | **Closed immediately** rather than deferred — it made every screenshot in the pending visual pass wrong. |
+| 2 | `correctness` | `(app)/home/index.tsx:37-40` | **The empty state's only action looped.** `invalidateQueries()` cannot refresh `hasVehicles`: `/me` is not a react-query query at all — `useSession` reads a **zustand** store written only by `setSignedIn`/`setUser`, and the app's only `useQuery` is `useVehicles`. So `hasVehicles` stayed `true`, `router.replace("/")` bounced through a route with four definitions, and every path led back to `(app)` — never to `(onboarding)`. **Plan A named this exact anti-pattern** in `shared/api/me.ts:35-38`: *"invalidating every query and bouncing through `/` is not [the recovery]"* — and `refreshMe` was already exported from the barrel this file imports. | `void refreshMe();` and no navigation — `AppGate` re-renders on the store write and redirects itself, which also keeps "exactly one redirect" true. | **Closed immediately.** The plan's Step 7 snippet carried the same code and is corrected too. |
+| 2 | `test-integrity` | `test/session.test.ts` | **AC1's stack half has no assertion anywhere.** `<Stack>` moved down into `components/shell/TabStack.tsx`, and no test references `TabStack` or `TabScreen`. Delete `(app)/home/_layout.tsx` and the route still renders — expo-router falls back to the parent navigator — AC1's stack half is silently gone, and the suite stays green. | A second loop in the same file: read each tab directory's `_layout.tsx` and assert it contains `<TabStack`. Filesystem + `readFileSync`, no renderer needed. | Open — fix pass. |
+| 2 | `hygiene` | `(app)/_layout.tsx:54` | `radius="xs"` (6pt) applies to **all four** corners of a bar pinned to the screen bottom, so the two bottom corners cut 6pt wedges of graphite ground out of it. Rounded top corners read as deliberate; the bottom two do not. | `borderBottomLeftRadius: 0, borderBottomRightRadius: 0` on the passed style. Confirm against the visual pass first. | Open — fix pass. |
+| 2 | `hygiene` | `components/shell/TabScreen.tsx:28` | Content clears the tab bar but the scroll indicator does not — it runs under it. | `scrollIndicatorInsets={{ bottom: tabBarHeight }}`. | Open — fix pass. |
+| 2 | `hygiene` | `apps/mobile/package.json:5` | `bun x expo install` rewrote an escaped em dash in the description to a literal one. Harmless; worth one line in the commit message so nobody hunts for meaning in it. | None. | Accepted. |
+| 2 | — | `/catalog`, `/_sitemap` | **Outside all three gates**, reachable by deep link on a signed-out device. Predates AM-16 (arrived with AM-15 / Plan A), so **not this plan's defect and deliberately not in its fix pass** — the owner asked for it on its own ticket, branched from `dev`. Task 2's review is what surfaced it. | Own ticket. | Deferred to its own branch. |
+| 3 | — | review scheduling | **Task 3's review is BATCHED into Task 4's**, on `opus`, and this row records which review covered which task so the completion report can be honest about it. Task 3 is three screens of product copy plus three `<Tabs.Screen>` entries — close to mechanical — but it edits `(app)/_layout.tsx`, which carries the auth gate, so it is never folded away entirely. Task 4 touches the same file and the sign-out control, so one reviewer reading both sees the whole of that file's final state rather than an intermediate one. | — | Batched, not skipped. |
+| 3 | `correctness` (product) | AM-16 AC1, the stack half | **Only structurally verified, and the ticket comment must say so.** AC1 asks that returning to a tab preserves scroll position **and** the navigation stack. Scroll is observable now that a second tab exists. The stack half is not: no tab in Plan C has a second pushed screen, so `popToTopOnBlur`'s `false` default has nothing to preserve yet. The plan anticipated this (Task 3, step 7); the writer flagged it unprompted. | No code change. The first tab that gains a pushed screen — a later epic — is what actually exercises it. | Open — to be stated plainly on the AM-16 ticket, never as "AC1 ✓". |
+| 2 | — | `test/session.test.ts` | **A Plan A test legitimately had to change, and the controller checked it was not weakened.** The guard asserted the literal `<Stack` inside all three group gates; `(app)` now renders `<Tabs>`, so it went red as a *real* signal rather than a false positive — it is the automated check for the one invariant this task could break. The writer parameterised the navigator per group and kept all three assertions (gate opens, gate closes after, navigator strictly between). **Controller mutation-verified it still bites**: removing `<AppGate>` from `(app)/_layout.tsx` → 1 fail; restored → green. | — | Verified, no action. |
+| 5 | `test-integrity` | `test/add-actions.test.ts`, `AddButton.tsx:25` | **The one rule Task 5 exists for had no assertion, and the test file's header claimed it did.** What the suite held was `hasAddActions([]) === false` — the predicate. The rule lives in `AddButton`, and **no test referenced `AddButton` at all**. Change its body to `return <AddButtonContent />` and all 101 tests stayed green, `tsc` passed, lint passed — and the shipped app grows a floating "Tambah" on all five tabs opening a sheet with a vehicle picker and **zero actions**, exactly the dead end AC2's decision paragraph forbids. | A source-text assertion, the same technique `session.test.ts` uses for the auth gate. | **Closed and mutation-verified**: deleting the guard line turns the suite red; restored → 102 pass. |
+| 5 | `correctness` (product) | AM-16 AC3 | **AC3 has no evidence in the tree and nothing in the tree can produce it.** `ADD_ACTIONS` is empty, so `AddButtonContent` never mounts — the pre-filled title, the `AmSelect` switcher, and the persistence all live in code no gate, test, or screenshot executes. The writer DID run the plan's Step 5 (temporary `/catalog` entry, live simulator, nested-modal check, revert) and reported it; that is the only evidence and it is a report, not an artefact. | Record what Step 5 actually showed, and state on AM-16 that AC3's mechanism is verified only under a temporary entry — never a bare "AC3 ✓". | Recorded here; to be stated plainly on the ticket. |
+| 5 | `correctness` (latent) | `AddButton.tsx:53,:56` | The AC3 pre-fill is not guaranteed at the moment of the tap: `active` is `null` whenever `vehicles.data` is `undefined` — query in flight or errored, and no error branch is consumed. The day the first entry lands, tapping "Tambah" before the query settles gives a plain "Tambah" title, `options.length > 1` false so **no picker**, and live action buttons — a form with no indication which car it attaches to. | Hold the actions until the vehicle resolves: `AmSkeleton` while pending, `errorCopy` on failure. | Open — unreachable while the registry is empty. **The epic that adds the first entry must close this**, and will not re-derive it. |
+| 5 | `hygiene` | `components/shell/index.ts` | `AddButton` was exported from the barrel with **no consumer** — `TabScreen` imports it relatively. The export is the affordance that lets a future screen mount a second one inside its own `TabScreen`: two floating buttons, two independent sheets. | Delete the export line. | **Closed.** The plan asked for the export; that is corrected too. |
+| 5 | `test-integrity` | `test/add-actions.test.ts` | Mutation-measured: all four original assertions can fail, so none is a tautology — but T3's kill set is a strict **subset** of T2's, and T4's second assertion is literally T1 since `ADD_ACTIONS` is `[]`. Neither adds power. T4's *first* assertion is genuinely valuable — it is the automated form of Step 5's revert check. | One comment saying T4 is expected to be deleted by the first epic that adds a real entry. | Open — cosmetic. |
+| — | — | controller's own brief | **The reviewer caught an error in my brief**: I stated the baseline as 95 tests when the tree ran 101. I had run the gate at 95, then added six tests of my own, then wrote the brief from the stale number. Recorded because this repository's standing rule is exit codes over remembered summaries, and a stated count that does not match the tree is exactly the shape that rule exists to catch. | — | Noted. |
+| 1 | `test-integrity` (structural for Task 2) | `format.ts:32`, plan `Tidak boleh ada` | **The anti-goal is one `??` away and nothing catches it.** `Tidak boleh ada` says "A null cost is omitted, never rendered as `Rp 0`", but `formatRupiah(decimal: string)` cannot express that, and the plan's own required "null total" test is absent. Task 2 writing `formatRupiah(summary.total_cost ?? "0")` renders the forbidden `Rp 0`, and it **passes typecheck, lint, and all 17 tests**. `formatRupiah`'s own dead `?? "0"` models the anti-pattern for the next reader. A genuine server `"0.00"` → `Rp 0` IS correct — `money()` returns JSON `null`, not `"0"`, when there is no rollup — so null and zero must look different. | Doc-comment the rule on `formatRupiah`, and Task 2 omits the element rather than defaulting the value. | **Raised immediately to the Task 2 writer mid-flight** rather than deferred, because Task 2 is the call site. Doc comment in the fix pass. |
+| 1 | `correctness` | `features/garage/format.ts:55` | **`formatShortDate` fabricates text.** The guard tests string truthiness, not parseability: `formatShortDate("2026-08-12T00:00:00Z")` → **`"NaN Agu 2026"`**, and `"2026-08-99"` → `"99 Agu 2026"`. The doc comment two lines above promises "an unparseable value is returned as-is rather than guessed at". Not reachable from `/vehicles` today — `iso_date.rs` serialises strictly `YYYY-MM-DD` — so it is a latent trap for the next caller of an exported formatter. | Test the day's SHAPE, not its truthiness. | **Closed**, with four tests covering the date-time string, the missing year, the missing day, and a documented limit (a 1-2 digit day is accepted, so `99` renders — the guard rejects unparseable input, not an impossible calendar). |
+| 1 | `test-integrity` | `format.ts:33`, `:34-36`, `:55` | **Four code paths no assertion can kill**, each verified by mutation against scratchpad copies — all four survive at 17 pass / 0 fail. `!year` and `!day` in the date guard are individually dead (only `!name` is exercised). The **negative-sign branch has zero coverage and a real consequence**: deleting it flips `formatRupiah("-4200000.00")` from `-Rp 4.200.000` to `Rp -4.200.000` with every test still green. And `?? "0"` at `:33` is provably dead — `String.split` never returns an empty array, and `noUncheckedIndexedAccess` is not set. | Three assertions and delete the dead `?? "0"`. | **Closed.** The negative-sign test alone kills a mutation that previously survived silently. |
+| 1 | `correctness` | `features/shell/errorCopy.ts:9-11, 26` | `isApiError` narrows on `"kind" in value` alone, then dereferences `.message`. An object with `kind` but no string `message` renders **`"undefined Data kamu aman."`** — the literal word, to a person. Not reachable from Plan A today (every throw site sets `message`), but the guard is the boundary and does not check the field it reads. | Add `&& typeof (value as ApiError).message === "string"`. | **Closed** in the fix pass. |
+| 1 | `hygiene` | `features/garage/queries.ts:22-27` | `useQuery` infers `TError = Error`, but `ApiError` is an interface and `client.ts` throws an object literal — so `query.error` is typed `Error` while the runtime value has no `stack` and fails `instanceof Error`. Contained only because `errorBody(error: unknown)` never trusts the type. | `useQuery<Vehicle[], ApiError>({…})`. | **Closed** in the fix pass. |
+| 1 | `hygiene` | `features/shell/errorCopy.ts:19` | Comment says the taxonomy maps "**four** kinds"; there are **five**, and `errorBody` maps all five to two outputs. Inherited verbatim from `errors.ts:4`, which says the same above a five-row table. It matters because it is the exact sentence a reviewer reads when checking coverage. | Say five. | **Closed** in `errorCopy.ts`. |
+| 1 | — | — | **The writer's mutation claim was understated, not overstated.** It reported 4 tests going red when `groupThousands` is dropped; the reviewer measured **5** (four in `formatRupiah`, one in `formatKilometres`). Recorded because an honest-but-imprecise claim is worth distinguishing from a wrong one. | — | No action. |
+| pre-exec | `test-integrity` | plan, all 5 `TDD:` verdicts + environment card item 8 | **Systemic, and the same defect Plan B carried.** Every verdict was justified by "`apps/mobile` has no test runner" — true when the plan was written, false since Plan A added `bun test test/` to `mb-check` and CI, with five more suites from Plan B. Task 1's formatters are Indonesian **money and date** logic, exactly the class that is wrong at a boundary and invisible on a screen, and they were about to ship with nothing that could fail. | Re-derive each verdict from what is true: a runner exists, it has **no React renderer**, so pure functions become test-first and rendered surfaces stay verified-by-running. | **Closed.** Task 1 flipped to `TDD: yes` for the four pure functions; the other four verdicts keep `no` but no longer cite a false reason. 17 tests resulted. |
+| pre-exec | `correctness` | plan, `Interfaces from Plan A` + Task 1 `Consumes` + Steps 4/5/6 snippets | The plan guessed `useActiveVehicleId` / `setActiveVehicleId` live in `@/shared/session/store`. **They do not** — they are in `apps/mobile/src/shared/vehicle/activeVehicle.ts:32,37`. More generally the snippets imported from deep paths (`@/shared/api/client`, `@/shared/api/errors`, …) when the barrel's own header says Plans B, C, and D import from `@/shared` and nowhere else. Plan B's writers tripped over exactly this three separate times. | Verify both Plan A assumptions before task 1 and write the answers into the plan; rewrite every code-block import to the barrel. | **Closed** before task 1 was dispatched. Zero deep-path imports remain in the plan. |
+
