@@ -3,14 +3,14 @@
   "configurations": [
     {
       "name": "landing-preview",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "preview", "--workspace", "@anakmobil/landing"],
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--filter", "@anakmobil/landing", "preview"],
       "port": 4321
     },
     {
       "name": "landing-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@anakmobil/landing"],
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--filter", "@anakmobil/landing", "dev"],
       "port": 4321
     }
   ]

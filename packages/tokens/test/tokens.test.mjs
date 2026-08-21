@@ -4,7 +4,22 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { accent, brand, dark, layout, light, radius, semantic, spacing } from "../src/tokens.js";
+import {
+  accent,
+  brand,
+  dark,
+  edge,
+  ground,
+  layout,
+  light,
+  material,
+  onAccent,
+  onGraphite,
+  radius,
+  semantic,
+  semanticText,
+  spacing,
+} from "../src/tokens.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (file) => readFile(resolve(here, "..", "dist", file), "utf8");
@@ -12,12 +27,29 @@ const read = (file) => readFile(resolve(here, "..", "dist", file), "utf8");
 const HEX = /^#[0-9A-F]{6}$/;
 
 test("every colour is a six-digit uppercase hex", () => {
-  const groups = { brand, accent, semantic, light, dark };
+  const groups = {
+    brand,
+    accent,
+    semantic,
+    light,
+    dark,
+    "semanticText.light": semanticText.light,
+    "semanticText.dark": semanticText.dark,
+  };
   for (const [group, values] of Object.entries(groups)) {
     for (const [key, value] of Object.entries(values)) {
       assert.match(value, HEX, `${group}.${key} is "${value}"`);
     }
   }
+  assert.match(onAccent, HEX, `onAccent is "${onAccent}"`);
+  assert.match(onGraphite, HEX, `onGraphite is "${onGraphite}"`);
+});
+
+test("the two material themes define exactly the same roles", () => {
+  // A role in one theme and not the other renders as an undefined surface.
+  assert.deepEqual(Object.keys(material.light).sort(), Object.keys(material.dark).sort());
+  assert.deepEqual(Object.keys(edge.light).sort(), Object.keys(edge.dark).sort());
+  assert.deepEqual(Object.keys(ground.light).sort(), Object.keys(ground.dark).sort());
 });
 
 test("the two themes define exactly the same keys", () => {

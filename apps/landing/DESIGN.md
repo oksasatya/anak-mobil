@@ -6,6 +6,21 @@ Copy that appears on the page is quoted in **Bahasa Indonesia**, because that is
 
 ---
 
+## Shipped state (updated 2026-08-18)
+
+The site is built; this brief is kept as the original intent, and the notes below record where the delivered site deliberately diverges from it. Where a section further down still describes the pre-build plan, this list is the source of truth.
+
+- **Multi-page, not one page.** The site ships six pages — `/` (Beranda), `/fitur`, `/komunitas`, `/tentang`, `/daftar`, `/privasi` — sharing one `Shell` (sticky centered nav + footer). The "one page, done well" framing below is superseded. Blog, pricing, and the workshop/seller portals remain out of scope.
+- **Dark-only.** The theme toggle and every light-mode path were removed; `data-theme="dark"` is fixed on `<html>`. The token package still *defines* light values for future surfaces (backoffice, mobile), but the landing never uses them. The "design light and dark, both first-class" instruction below no longer applies to this surface.
+- **Photographic hero.** The hero is a full-bleed atmospheric photograph (a car at rest in a garage, an orange floor line = the brand "jalur"), served as responsive WebP with a left-side scrim for the headline. It replaces the abstract SVG empty-state mock the brief proposed. Still honest: brand atmosphere, no fabricated data or people.
+- **Beranda expanded.** Eight sections: hero → the problem → three pillars → how it works → who it's for → contribution-is-free → FAQ (`<details>`, zero-JS) → CTA. Copy sharpened via the marketing pass.
+- **Signature "jalur".** The orange line recurs as the brand signature — the hero floor line, the CTA rule, and a short rule in every inner-page header (`PageHeader`).
+- **Waitlist still not wired.** The `/daftar` form is designed but inert (labelled "belum dibuka") with a real mailto fallback, because its backend (AM-346) does not exist yet. No fake success.
+- **SEO shipped.** `@astrojs/sitemap`, `robots.txt` Sitemap line, JSON-LD (Organization + WebSite site-wide, FAQPage on Beranda from the same source as the visible FAQ), Open Graph + Twitter `summary_large_image` with a 1200×630 branded share image. Lighthouse field data and Search Console indexing wait on deployment.
+- **Motion.** A light CSS scroll-reveal (`animation-timeline: view()`), disabled under `prefers-reduced-motion`, content visible without support. No framework runtime — the waitlist island (AM-346) stays the only planned exception.
+
+---
+
 ## 1. The product, in one breath
 
 AnakMobil.id is a **digital garage and community for car owners in Indonesia**: keep a service history that survives selling the car, record a build as structured data (not a photo album), and ask people who fitted the same part to the same car. There is also a grounded AI assistant, but the landing page does not lead with AI — the brand rule is *"hindari klaim AI berlebihan."*

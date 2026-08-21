@@ -131,11 +131,12 @@ async fn json(response: Response) -> Value {
 /// cannot be decoded into a user id.
 async fn a_signed_in_person(app: &axum::Router) -> (String, String) {
     let email = format!("parts-{}@example.com", Uuid::now_v7());
+    let username = format!("u{}", &Uuid::now_v7().simple().to_string()[13..]);
     let response = send(
         app,
         "POST",
         "/auth/register",
-        Some(json!({"email": email, "password": "kata sandi panjang"})),
+        Some(json!({"email": email, "username": username, "password": "kata sandi panjang"})),
         None,
     )
     .await;

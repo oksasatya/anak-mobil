@@ -23,6 +23,8 @@ pub enum AuthError {
     InvalidCredentials,
     #[error("that email is already registered")]
     EmailTaken,
+    #[error("that username is already taken")]
+    UsernameTaken,
     #[error("the session could not be reached")]
     Session(#[from] SessionError),
     #[error("the database could not be reached")]
@@ -31,32 +33,73 @@ pub enum AuthError {
     Password(#[from] PasswordError),
 }
 
+/// The unique indexes a registration can collide with.
+///
+/// Named rather than inlined: each string appears in the match below and in the
+/// migration that created it, and a typo in one of them would silently route a
+/// collision to the fallback.
+const USERS_EMAIL_KEY: &str = "users_email_key";
+const USERS_USERNAME_KEY: &str = "users_username_key";
+
+/// What a registration supplies.
+///
+/// A struct rather than three positional `&str`: `("budi@example.com", "budi", …)`
+/// and `("budi", "budi@example.com", …)` both compile, and only one of them is
+/// right.
+pub struct Registration<'a> {
+    pub email: &'a str,
+    pub username: &'a str,
+    pub password: &'a str,
+}
+
 /// Create an account and sign it in.
+///
+/// The username arrives already canonicalised — the HTTP layer calls
+/// `identity::username::canonicalise` so that a malformed name is a validation
+/// failure with a field message rather than a database error.
 ///
 /// # Errors
 ///
-/// [`AuthError::EmailTaken`] when the address is registered, otherwise a
-/// storage error.
+/// [`AuthError::EmailTaken`] or [`AuthError::UsernameTaken`] when the
+/// corresponding unique index fires, otherwise a storage error.
 pub async fn register(
     pool: &PgPool,
     sessions: &SessionStore,
-    email: &str,
-    password: &str,
+    input: Registration<'_>,
 ) -> Result<TokenPair, AuthError> {
-    let hash = security::hash_password(password)?;
+    let hash = security::hash_password(input.password)?;
     let id = Uuid::now_v7();
 
     let mut tx = pool.begin().await?;
-    let result = user_repo::insert(&mut tx, id, email, &hash).await;
+    let result = user_repo::insert(
+        &mut tx,
+        user_repo::NewUser {
+            id,
+            email: input.email,
+            username: input.username,
+            password_hash: &hash,
+        },
+    )
+    .await;
 
     match result {
         Ok(()) => {
             tx.commit().await?;
             Ok(sessions.create(id).await?)
         }
-        // 23505 is a unique violation, which here can only be the email index.
+        // 23505 is a unique violation. It used to be mapped straight to
+        // EmailTaken with a comment saying it "can only be the email index" —
+        // true until `users_username_key` existed, and afterwards a way to tell
+        // somebody to change an address that was never the problem.
         Err(sqlx::Error::Database(err)) if err.code().as_deref() == Some("23505") => {
-            Err(AuthError::EmailTaken)
+            match err.constraint() {
+                Some(USERS_USERNAME_KEY) => Err(AuthError::UsernameTaken),
+                Some(USERS_EMAIL_KEY) => Err(AuthError::EmailTaken),
+                // A third unique index nobody mapped. Guessing which field
+                // collided would be worse than a 500 that shows up in the log
+                // with its constraint name attached.
+                _ => Err(AuthError::Database(sqlx::Error::Database(err))),
+            }
         }
         Err(err) => Err(err.into()),
     }

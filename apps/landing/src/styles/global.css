@@ -28,9 +28,9 @@
   font-display: swap;
   src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
     format("woff2-variations");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 *,
@@ -91,6 +91,47 @@ button {
   outline: 2px solid var(--accent-500);
   outline-offset: 3px;
   border-radius: var(--radius-xs);
+}
+
+/* Design-system utility classes (docs/design.md §11). Global rather than
+ * scoped because components and pages both apply them by name.
+ *
+ * .am-spec: tabular, lining figures so automotive numbers scan and columns
+ * line up — 18×8.5 ET40 · 225/40 R18 · 146.120 KM · Rp 14.500.000.
+ * .am-label: the uppercase micro-kicker over a section or card. */
+.am-spec {
+  font-feature-settings: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.01em;
+}
+
+.am-label {
+  font: var(--type-m-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Scroll-reveal — a light enhancement over already-visible content, shared by
+ * every page. Uses a scroll-driven view timeline where supported; content is
+ * fully visible without it, and it never runs under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: am-reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 22%;
+    }
+    @keyframes am-reveal-in {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

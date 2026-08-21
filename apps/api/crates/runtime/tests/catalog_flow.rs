@@ -115,11 +115,12 @@ async fn json(response: Response) -> Value {
 
 async fn a_signed_in_person(app: &axum::Router) -> String {
     let email = format!("catalog-{}@example.com", Uuid::now_v7());
+    let username = format!("u{}", &Uuid::now_v7().simple().to_string()[13..]);
     let response = send(
         app,
         "POST",
         "/auth/register",
-        Some(json!({"email": email, "password": "kata sandi panjang"})),
+        Some(json!({"email": email, "username": username, "password": "kata sandi panjang"})),
         None,
     )
     .await;

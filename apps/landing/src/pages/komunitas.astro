@@ -1,0 +1,345 @@
+---
+/**
+ * Komunitas — how the community works and the promise that never changes:
+ * contributing is free forever, at every tier (AM-341, and the closing rule
+ * of the PRD's monetisation section). No invented member counts, no
+ * testimonials — the cold start is reframed as an invitation.
+ */
+import Shell from "../layouts/Shell.astro";
+import PageHeader from "../components/PageHeader.astro";
+import Card from "../components/Card.astro";
+import Badge from "../components/Badge.astro";
+import Icon from "../components/Icon.astro";
+
+const title = "Komunitas pemilik mobil per model — AnakMobil.id";
+const description =
+  "Cara kerja komunitas AnakMobil: berbagi build, lapor masalah dan solusinya, jawab pertanyaan, gabung per mobil. Kontribusi gratis selamanya.";
+
+const steps = [
+  {
+    icon: "wrench",
+    h: "Bagikan build kamu",
+    p: "Spek lengkap sebagai data. Pemilik mobil yang sama bisa lihat apa yang benar-benar jalan — velg, offset, suspensi, semuanya angka.",
+  },
+  {
+    icon: "flag",
+    h: "Lapor masalah — dan solusinya",
+    p: "Masalah yang selesai tidak hilang di chat. Dia jadi arsip yang bisa dicari pemilik berikutnya dengan gejala yang sama.",
+  },
+  {
+    icon: "message-circle",
+    h: "Jawab pertanyaan",
+    p: "Pengalaman kamu di satu part bisa menghemat waktu dan uang orang lain. Ini kontribusi paling berharga di sini.",
+  },
+  {
+    icon: "users",
+    h: "Gabung komunitas mobil kamu",
+    p: "Per brand, model, sampai generasi. Obrolannya relevan karena mobilnya sama.",
+  },
+] as const;
+
+const gratis = [
+  "Bagikan build",
+  "Lapor masalah & solusinya",
+  "Jawab pertanyaan",
+  "Catat riwayat servis mobil kamu",
+];
+---
+
+<Shell title={title} description={description} path="/komunitas" active="komunitas">
+  <PageHeader
+    kicker="Komunitas"
+    title="Dibangun dari mobil, bukan dari feed."
+    sub="Tidak ada follower, tidak ada like, tidak ada yang viral. Yang ada: build, masalah yang selesai, dan jawaban dari orang yang mobilnya sama dengan punya kamu."
+  />
+
+  <!-- Cara kerjanya -->
+  <section class="how reveal">
+    <div class="container">
+      <h2>Cara kerjanya</h2>
+      <p class="lede">Empat cara ikut — semuanya gratis, sekarang dan nanti.</p>
+      <ol class="steps">
+        {
+          steps.map((s, i) => (
+            <li class="step">
+              <div class="rail">
+                <span class="am-spec num">{i + 1}</span>
+                {i < steps.length - 1 && <span class="conn" />}
+              </div>
+              <div class="step-body">
+                <div class="step-h">
+                  <span class="step-icon">
+                    <Icon name={s.icon} size={17} />
+                  </span>
+                  <h3>{s.h}</h3>
+                </div>
+                <p>{s.p}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <!-- Janji -->
+  <section class="promise reveal">
+    <div class="container">
+      <div class="promise-head">
+        <div class="am-label kicker">Janji yang tidak akan berubah</div>
+        <h2>Kontribusi selalu gratis.</h2>
+        <p class="promise-p">
+          Tier berbayar membeli kedalaman AI dan alat pribadi — tidak pernah hak untuk bersuara.
+          Platform yang ilmunya datang dari member tidak pantas memungut bayaran untuk
+          berkontribusi.
+        </p>
+      </div>
+      <div class="tiers">
+        <div class="tier">
+          <Card padding="22px" fill>
+            <div class="am-label tier-label ok">Selalu gratis</div>
+            <div class="tier-list">
+              {
+                gratis.map((g) => (
+                  <div class="tier-item">
+                    <span class="ok icon">
+                      <Icon name="check" size={16} strokeWidth={2} />
+                    </span>
+                    <span>{g}</span>
+                  </div>
+                ))
+              }
+            </div>
+          </Card>
+        </div>
+        <div class="tier">
+          <Card padding="22px" fill>
+            <div class="am-label tier-label muted">Tier berbayar — nanti</div>
+            <div class="tier-list">
+              <div class="tier-item">
+                <span class="muted icon"><Icon name="sparkles" size={16} /></span>
+                <span>Kedalaman analisis AI</span>
+              </div>
+              <div class="tier-item">
+                <span class="muted icon"><Icon name="wrench" size={16} /></span>
+                <span>Alat pribadi tambahan</span>
+              </div>
+            </div>
+            <p class="never">Dan tidak akan pernah: hak untuk bersuara.</p>
+          </Card>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Baru mulai -->
+  <section class="first reveal">
+    <div class="container center">
+      <Badge tone="brand">Baru mulai</Badge>
+      <h2 class="first-h">
+        Komunitasnya baru mulai. Yang pertama masuk yang menentukan bentuknya.
+      </h2>
+      <p class="first-p">
+        Kami tidak akan pamer angka yang belum ada — belum ada ribuan member, belum ada testimoni.
+        Norma komunitas ini akan dibentuk oleh orang-orang pertamanya. Bisa jadi kamu.
+      </p>
+      <a class="first-cta" href="/daftar">Daftar Waitlist</a>
+    </div>
+  </section>
+</Shell>
+
+<style>
+  .container {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 28px);
+  }
+  .kicker {
+    color: var(--color-text-tertiary);
+  }
+
+  .how {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(44px, 7vw, 72px) 0;
+  }
+  h2 {
+    font: var(--type-h2);
+    font-size: clamp(24px, 3.8vw, 34px);
+    line-height: 1.22;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .lede {
+    font: 400 15px/23px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 12px 0 0;
+    max-width: 560px;
+  }
+  .steps {
+    list-style: none;
+    padding: 0;
+    max-width: 720px;
+    margin: 32px 0 0;
+  }
+  .step {
+    display: flex;
+    gap: 18px;
+  }
+  .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: none;
+  }
+  .num {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-pill);
+    border: 1.5px solid var(--color-border-strong);
+    background: var(--color-surface);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--color-text-primary);
+  }
+  .conn {
+    flex: 1;
+    width: 2px;
+    background: var(--accent-500);
+    margin: 6px 0;
+    border-radius: 2px;
+  }
+  .step-body {
+    padding-bottom: 30px;
+  }
+  .step:last-child .step-body {
+    padding-bottom: 0;
+  }
+  .step-h {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .step-icon {
+    color: var(--color-text-secondary);
+    display: inline-flex;
+  }
+  .step-body h3 {
+    font: 650 18px/24px var(--font-sans);
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .step-body p {
+    font: 400 14px/22px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 8px 0 0;
+    max-width: 520px;
+  }
+
+  .promise {
+    background: var(--color-surface-subtle);
+    border-top: 1px solid var(--color-border);
+    padding: clamp(44px, 7vw, 72px) 0;
+  }
+  .promise-head {
+    max-width: 760px;
+  }
+  .promise-head h2 {
+    line-height: 1.24;
+    margin-top: 10px;
+  }
+  .promise-p {
+    font: 400 16px/25px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 12px 0 0;
+  }
+  .tiers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 28px;
+    align-items: stretch;
+  }
+  .tier {
+    flex: 1 1 300px;
+    min-width: min(100%, 280px);
+  }
+  .tier-label.ok {
+    color: var(--success);
+  }
+  .tier-label.muted {
+    color: var(--color-text-tertiary);
+  }
+  .tier-list {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    margin-top: 14px;
+  }
+  .tier-item {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font: 400 14px/20px var(--font-sans);
+    color: var(--color-text-primary);
+  }
+  .tier-item .icon {
+    flex: none;
+    display: inline-flex;
+  }
+  .tier-item .ok {
+    color: var(--success);
+  }
+  .tier-item .muted {
+    color: var(--color-text-tertiary);
+  }
+  .never {
+    font: 600 13px/19px var(--font-sans);
+    color: var(--color-text-primary);
+    margin: auto 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .first {
+    border-top: 1px solid var(--color-border);
+    padding: clamp(52px, 8vw, 84px) 0;
+  }
+  .center {
+    max-width: 720px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .first-h {
+    font-size: clamp(24px, 3.8vw, 34px);
+    line-height: 1.24;
+    margin: 16px 0 0;
+    text-wrap: balance;
+  }
+  .first-p {
+    font: 400 15px/24px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 14px 0 0;
+    max-width: 560px;
+  }
+  .first-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 0 22px;
+    margin-top: 26px;
+    border-radius: var(--radius-md);
+    background: var(--accent-500);
+    color: #ffffff;
+    font: 600 16px/1 var(--font-sans);
+    text-decoration: none;
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+  .first-cta:hover {
+    background: var(--accent-400);
+  }
+</style>

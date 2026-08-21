@@ -1,0 +1,77 @@
+---
+/**
+ * The graphite call-to-action band: orange rule, a heading, a line of copy,
+ * and the waitlist button. Graphite in both themes, so its text is the
+ * dark-theme ink regardless of page theme. Appears at the foot of several
+ * pages, so it lives here rather than being copied per page.
+ */
+export interface Props {
+  heading: string;
+  body: string;
+  cta?: string;
+}
+const { heading, body, cta = "Daftar Waitlist" } = Astro.props;
+---
+
+<div class="band">
+  <div class="copy">
+    <span class="rule"></span>
+    <h2>{heading}</h2>
+    <p>{body}</p>
+  </div>
+  <a class="cta" href="/daftar">{cta}</a>
+</div>
+
+<style>
+  .band {
+    background: var(--brand-800);
+    border: 1px solid var(--brand-700);
+    border-radius: var(--radius-xl);
+    padding: clamp(28px, 5vw, 48px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px clamp(24px, 4vw, 48px);
+    align-items: center;
+    justify-content: space-between;
+  }
+  .copy {
+    flex: 1 1 300px;
+    min-width: min(100%, 280px);
+  }
+  .rule {
+    display: block;
+    width: 44px;
+    height: 3px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-500);
+  }
+  h2 {
+    font: var(--type-h2);
+    font-size: clamp(24px, 3.6vw, 32px);
+    line-height: 1.25;
+    color: #f5f7f8;
+    margin: 16px 0 0;
+  }
+  p {
+    font: 400 15px/23px var(--font-sans);
+    color: rgba(245, 247, 248, 0.75);
+    margin: 10px 0 0;
+    max-width: 560px;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 0 22px;
+    border-radius: var(--radius-md);
+    background: var(--accent-500);
+    color: #ffffff;
+    font: 600 16px/1 var(--font-sans);
+    text-decoration: none;
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+  .cta:hover {
+    background: var(--accent-400);
+  }
+</style>

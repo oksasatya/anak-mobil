@@ -6,6 +6,7 @@ pub mod builds;
 pub mod catalog;
 pub mod parts;
 pub mod probe;
+pub mod profile;
 pub mod request_id;
 pub mod services;
 pub mod summary;
@@ -41,6 +42,11 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/logout", post(auth::logout))
+        .route("/me", get(profile::me).patch(profile::update_me))
+        .route(
+            "/usernames/{username}/availability",
+            get(profile::availability),
+        )
         .route("/catalog/brands", get(catalog::brands))
         .route("/catalog/brands/{id}/models", get(catalog::models))
         .route(

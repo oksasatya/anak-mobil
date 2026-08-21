@@ -10,10 +10,37 @@ LANDING := @anakmobil/landing
 # A scratch database for the sqlx cache. Empty by construction — see be-prepare.
 PREPARE_URL := postgres://postgres:anakmobil@127.0.0.1:55432/anakmobil_prepare
 TOKENS := @anakmobil/tokens
+MOBILE := @anakmobil/mobile
+MOBILE_DIR := apps/mobile
+
+# Which platform the mb-run-* device builds target. `p=android` overrides.
+p ?= ios
+
+# `make dev` opens the app on the iOS simulator; `make dev m=none` skips it.
+#
+# iOS only, deliberately. Android is still built and still has to work — AM-24
+# asks for the app running on a physical device of each platform — but it is a
+# manual path (`mb-run-dev p=android`, then `mb-reverse`), not part of the daily
+# loop. Booting an emulator on every `make dev` costs more than it returns when
+# the day's work is iOS.
+#
+# `m=none` exists for the case this would otherwise punish: editing the landing
+# page on a machine where no simulator needs to run at all.
+#
+# Either way this opens an ALREADY-INSTALLED dev client and never builds one.
+# The native build is `make mb-run-dev`, minutes long, and only repeats when a
+# native dependency changes.
+m ?= ios
+ifeq ($(m),none)
+DEV_OPEN :=
+else
+DEV_OPEN := --ios
+endif
 
 .DEFAULT_GOAL := help
 .PHONY: help be-run be-web be-worker be-migrate be-fmt be-lint be-test be-cov be-audit be-boundary be-check \
-        ds-build ds-check fe-dev fe-build fe-preview fe-check check
+        ds-build ds-check fe-dev fe-build fe-preview fe-check \
+        mb-check mb-test mb-reverse mb-run-dev mb-run-preview mb-run-prod fmt fmt-check check
 
 # Load .env and hand every value to the recipes below.
 #
@@ -116,18 +143,20 @@ db-psql: ## Open a psql shell on the development database
 # the comment onto the next line — silently swallowing the command that
 # follows it. That is not hypothetical; it is how the first version of this
 # target ran nothing at all while reporting success.
-#
-# When apps/mobile is scaffolded, add one more line to the group:
-#   ( bun run --filter @anakmobil/mobile start 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) &
-dev: db-up ds-build ## Run every surface that exists — API and landing, together
+dev: db-up ds-build ## Run every surface — API, landing, Metro, and the iOS app (m=none skips the app)
 	@echo 'api      \033[36mhttp://localhost:8080\033[0m'
 	@echo 'landing  \033[36mhttp://localhost:4321\033[0m'
-	@echo 'ctrl-c stops both'
+	@echo 'metro    \033[36mhttp://localhost:8081\033[0m'
+	@if [ -n '$(DEV_OPEN)' ]; then echo 'app      \033[36miOS simulator\033[0m'; else echo 'app      \033[36mnot opened (m=none) — Metro only\033[0m'; fi
+	@echo 'ctrl-c stops all'
 	@echo
+	@if [ -n '$(DEV_OPEN)' ] && [ ! -d $(MOBILE_DIR)/ios ]; then echo '\033[33mnote:\033[0m no iOS dev client yet — run `make mb-run-dev p=ios` once, then this opens it'; fi
+	@case '$(m)' in android|both) [ -d $(MOBILE_DIR)/android ] || echo '\033[33mnote:\033[0m no Android dev client yet — run `make mb-run-dev p=android` once, then this opens it';; esac
 	@set -m; \
-		trap 'kill -- -$$api -$$landing 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
+		trap 'kill -- -$$api -$$landing -$$mobile 2>/dev/null; for p in $$(lsof -ti tcp:8080 -ti tcp:4321 -ti tcp:8081 2>/dev/null); do kill $$p 2>/dev/null; done; wait 2>/dev/null' EXIT INT TERM; \
 		( cd $(API) && cargo run --quiet --bin anakmobil -- web 2>&1 | awk '{print "[api]     " $$0; fflush()}' ) & api=$$!; \
 		( bun run --filter $(LANDING) dev 2>&1 | awk '{print "[landing] " $$0; fflush()}' ) & landing=$$!; \
+		( cd $(MOBILE_DIR) && bunx expo start --dev-client $(DEV_OPEN) 2>&1 | awk '{print "[mobile]  " $$0; fflush()}' ) & mobile=$$!; \
 		wait
 
 be-web: ## Run the API in its web role
@@ -219,8 +248,90 @@ fe-build: ds-build ## Build the landing site
 fe-preview: ## Serve the built landing site (what Lighthouse must measure)
 	bun run --filter $(LANDING) preview
 
-fe-check: ds-check ## Type-check and build the landing site
+fe-check: ds-check fmt-check ## Type-check, format-check, and build the landing site
 	bun run --filter $(LANDING) gate
 	@echo "landing gate green"
 
-check: be-check fe-check ## Every gate in the repository
+# --- Mobile ------------------------------------------------------------------
+#
+# mb-check mirrors fe-check: it runs the workspace's own `check` script, which
+# generates the Expo Router typed routes, then `tsc --noEmit`, then `expo lint`.
+# The mb-run-* targets each pick a build profile — they set APP_VARIANT so
+# app.config.ts resolves that variant's app id/name, and source the matching
+# apps/mobile/.env.<variant> so EXPO_PUBLIC_API_URL is a real process-env var
+# that babel inlines. `p=ios` (default) or `p=android` chooses the device.
+#
+# These recipes inherit the root .env like every recipe (`-include .env; export`
+# above). They consume none of it, and only EXPO_PUBLIC_-prefixed vars ever reach
+# the bundle — a backend secret has no such name — so nothing can leak here.
+#
+# mb-run-* build to a real device and need the owner's Xcode/Android Studio; they
+# cannot run in CI, which only runs mb-check.
+
+mb-check: fmt-check ## Format-check, type-check, lint, and test the mobile app
+	bun run --filter $(MOBILE) check
+	bun run --filter $(MOBILE) test
+	@echo "mobile gate green"
+
+# Also runnable on its own, for the fast loop while editing the session layer.
+#
+# These tests are part of `mb-check` and part of CI, and that was a deliberate
+# decision rather than a default. The session layer's failure mode is every
+# session on every device being revoked, and its guards are *ordering*
+# properties — which `tsc --noEmit` and `expo lint` cannot see at all. Before
+# this ran in the gate, every one of the sixteen fixes hardening that layer
+# could be deleted, one line at a time, with CI still green.
+#
+# Each assertion was verified by the reverse of TDD: delete the guard, watch it
+# go red, restore it. A test that stays green with its guard deleted is worse
+# than no test, because it looks like protection.
+mb-test: ## Run the mobile app's runnable session-layer tests
+	bun run --filter $(MOBILE) test
+
+# Android's `localhost` is the device, not this Mac, so the app cannot reach the
+# API without a bridge. `adb reverse` forwards a device port back to the host,
+# which is what lets one EXPO_PUBLIC_API_URL of http://localhost:8080 be correct
+# on the iOS simulator, an Android emulator, and a USB-attached Android phone
+# alike. Expo already reverses Metro's own 8081; the API port is ours to add.
+#
+# It has to be re-applied whenever the device reconnects or the emulator restarts.
+# `make dev` no longer calls this: it opens iOS only, and Android is the manual
+# path — `make mb-run-dev p=android`, start the device, then this.
+mb-reverse: ## Bridge the API port into an attached Android device (localhost:8080)
+	@adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 \
+		&& echo 'adb reverse tcp:8080 -> host (localhost:8080 now reaches the API)' \
+		|| echo 'no Android device attached — start one, then re-run `make mb-reverse`'
+
+# LANG/LC_ALL are not cosmetic. Without a UTF-8 locale CocoaPods crashes inside
+# its OWN error reporter — `Encoding::CompatibilityError` in `unicode_normalize`
+# — which swallows whatever the real error was and prints a Ruby backtrace
+# instead. Diagnosing that costs an hour; setting it costs a line.
+mb-run-dev: ## Build+run the development variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; set +a; \
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=development bunx expo run:$(p)
+
+mb-run-preview: ## Build+run the preview variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.preview ] && . ./$(MOBILE_DIR)/.env.preview; set +a; \
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=preview bunx expo run:$(p)
+
+mb-run-prod: ## Build+run the production variant on a device (p=ios|android)
+	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; set +a; \
+		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=production bunx expo run:$(p)
+
+# --- Formatting ---------------------------------------------------------------
+#
+# Prettier owns every JavaScript, TypeScript, Astro, CSS, and JSON file in the
+# repository. Rust is NOT included — `cargo fmt` (be-fmt) owns apps/api, and
+# Markdown is excluded because the specs and READMEs are wrapped by hand.
+#
+# Each surface gate (fe-check, ds-check, mb-check) already verifies its own
+# formatting, so a surface stays self-contained; fmt-check covers what sits
+# outside a workspace, such as the workflow files.
+
+fmt: ## Format every JS/TS/Astro/CSS/JSON file
+	bun run format
+
+fmt-check: ## Fail if anything is unformatted (what the aggregate runs)
+	bun run format:check
+
+check: be-check fe-check mb-check fmt-check ## Every gate in the repository

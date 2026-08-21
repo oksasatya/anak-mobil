@@ -90,6 +90,17 @@ pub enum ErrorCode {
     NotFound,
     ValidationFailed,
     Unauthorized,
+    /// `/auth/login` refused for lack of matching credentials — an unknown
+    /// email, a wrong password, or a stored hash that will not parse, all one
+    /// variant on the way in (`usecase::auth::AuthError::InvalidCredentials`)
+    /// so the caller cannot tell them apart.
+    ///
+    /// Separate from [`Self::Unauthorized`] only in the message: "you need to
+    /// sign in first" is nonsense to tell someone who is, in fact, trying to.
+    /// `/auth/refresh` shares the same `AuthError` variant for an expired or
+    /// replayed token and keeps [`Self::Unauthorized`]'s message instead,
+    /// because "you need to sign in first" is exactly right there.
+    InvalidCredentials,
     Forbidden,
     Conflict,
     TooManyRequests,
@@ -105,6 +116,28 @@ pub enum ErrorCode {
     ServiceUnavailable,
 }
 
+/// Every variant, in declaration order.
+///
+/// Three tests each need "every code": this file's own message-coverage and
+/// wire-form-uniqueness tests, and `errors.rs`'s status-mapping test. All
+/// three used to maintain their own copy, and all three had independently
+/// forgotten [`ErrorCode::PartsDailyLimit`] — the exact mechanism meant to
+/// catch a forgotten variant had itself forgotten one. One list, iterated by
+/// all three, so a new variant left out of a test fails loudly instead of
+/// silently going uncovered a second or third time.
+pub const ALL: [ErrorCode; 10] = [
+    ErrorCode::NotFound,
+    ErrorCode::ValidationFailed,
+    ErrorCode::Unauthorized,
+    ErrorCode::InvalidCredentials,
+    ErrorCode::Forbidden,
+    ErrorCode::Conflict,
+    ErrorCode::TooManyRequests,
+    ErrorCode::PartsDailyLimit,
+    ErrorCode::Internal,
+    ErrorCode::ServiceUnavailable,
+];
+
 impl ErrorCode {
     /// The wire form — this string is the contract.
     #[must_use]
@@ -113,6 +146,7 @@ impl ErrorCode {
             Self::NotFound => "not_found",
             Self::ValidationFailed => "validation_failed",
             Self::Unauthorized => "unauthorized",
+            Self::InvalidCredentials => "auth.invalid_credentials",
             Self::Forbidden => "forbidden",
             Self::Conflict => "conflict",
             Self::TooManyRequests => "too_many_requests",
@@ -138,6 +172,9 @@ impl ErrorCode {
 
             (Self::Unauthorized, Lang::Id) => "Kamu perlu masuk dulu.",
             (Self::Unauthorized, Lang::English) => "You need to sign in first.",
+
+            (Self::InvalidCredentials, Lang::Id) => "Email atau password salah.",
+            (Self::InvalidCredentials, Lang::English) => "That email or password is not correct.",
 
             (Self::Forbidden, Lang::Id) => "Kamu tidak punya akses ke sini.",
             (Self::Forbidden, Lang::English) => "You do not have access to this.",
@@ -184,18 +221,7 @@ mod tests {
     /// reaches a user as a blank dialog.
     #[test]
     fn every_code_renders_in_both_languages() {
-        let codes = [
-            ErrorCode::NotFound,
-            ErrorCode::ValidationFailed,
-            ErrorCode::Unauthorized,
-            ErrorCode::Forbidden,
-            ErrorCode::Conflict,
-            ErrorCode::TooManyRequests,
-            ErrorCode::Internal,
-            ErrorCode::ServiceUnavailable,
-        ];
-
-        for code in codes {
+        for code in ALL {
             assert!(!code.as_str().is_empty(), "{code} has no wire form");
             for lang in [Lang::Id, Lang::English] {
                 assert!(
@@ -210,18 +236,8 @@ mod tests {
     fn wire_forms_are_unique() {
         // Two codes sharing a string would make the contract ambiguous while
         // still compiling.
-        let codes = [
-            ErrorCode::NotFound,
-            ErrorCode::ValidationFailed,
-            ErrorCode::Unauthorized,
-            ErrorCode::Forbidden,
-            ErrorCode::Conflict,
-            ErrorCode::TooManyRequests,
-            ErrorCode::Internal,
-            ErrorCode::ServiceUnavailable,
-        ];
         let mut seen = std::collections::HashSet::new();
-        for code in codes {
+        for code in ALL {
             assert!(seen.insert(code.as_str()), "duplicate wire form: {code}");
         }
     }

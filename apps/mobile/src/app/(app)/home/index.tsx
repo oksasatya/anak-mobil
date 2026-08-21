@@ -1,0 +1,100 @@
+import { Text, View } from "react-native";
+
+import { AmCard } from "@/components/display";
+import { AmSelect } from "@/components/input";
+import { TabScreen } from "@/components/shell";
+import { AmEmptyState, AmErrorState, AmSkeleton } from "@/components/state";
+import { useVehicles } from "@/features/garage/queries";
+import { useActiveVehicle } from "@/features/garage/useActiveVehicle";
+import { VehicleCard } from "@/features/garage/VehicleCard";
+import { errorBody } from "@/features/shell/errorCopy";
+import { refreshMe, setActiveVehicleId, useSession } from "@/shared";
+import { useTheme } from "@/theme";
+
+/**
+ * §19: Home is not an infinite feed. Header, the selected vehicle, and what
+ * its history says — and nothing this release cannot answer honestly.
+ */
+export default function HomeScreen() {
+  const theme = useTheme();
+  const { user } = useSession();
+  const vehicles = useVehicles();
+  const active = useActiveVehicle(vehicles.data);
+
+  const name = user?.displayName ?? user?.username;
+  const options = (vehicles.data ?? []).map((vehicle) => ({
+    value: vehicle.id,
+    label: vehicle.name,
+  }));
+
+  // The shell is only reachable when GET /me says the account has a car, so an
+  // empty list means the last one went away somewhere else. Re-running the
+  // bootstrap gate is what puts the person back into the first-car wizard;
+  // this screen must not grow its own copy of that route.
+  // `refreshMe()`, and NOTHING else. `invalidateQueries()` cannot refresh
+  // `hasVehicles`: `/me` is not a react-query query at all — `useSession`
+  // reads a zustand store written only by `setSignedIn`/`setUser`, and the
+  // only `useQuery` in the app is `useVehicles`. So the old version left
+  // `hasVehicles` true and `router.replace("/")` bounced straight back here,
+  // and the one action in the empty state looped. Plan A named this exact
+  // anti-pattern in `shared/api/me.ts` — "invalidating every query and
+  // bouncing through `/` is not [the recovery]". `refreshMe` writes the store,
+  // `AppGate` re-renders and redirects to `(onboarding)` itself, which also
+  // keeps "exactly one redirect" true. Found in Task 2's review.
+  const restartOnboarding = () => {
+    void refreshMe();
+  };
+
+  return (
+    <TabScreen>
+      <Text accessibilityRole="header" style={[theme.type.h1, { color: theme.color.textPrimary }]}>
+        {name ? `Halo, ${name}` : "Beranda"}
+      </Text>
+
+      {vehicles.isPending ? (
+        <AmCard role="working">
+          <View style={{ gap: theme.space[3] }}>
+            <AmSkeleton height={28} width="70%" />
+            <AmSkeleton height={14} width="45%" />
+            <AmSkeleton height={14} />
+            <AmSkeleton height={14} width="80%" />
+          </View>
+        </AmCard>
+      ) : null}
+
+      {vehicles.isError ? (
+        <AmCard role="working">
+          <AmErrorState
+            title="Garasi gagal dimuat"
+            body={errorBody(vehicles.error)}
+            onRetry={() => void vehicles.refetch()}
+          />
+        </AmCard>
+      ) : null}
+
+      {vehicles.isSuccess && !active ? (
+        <AmCard role="working">
+          <AmEmptyState
+            title="Belum ada mobil di garasi"
+            body="Semua isi aplikasi ini berangkat dari mobil kamu. Tambahkan satu dulu, sisanya menyusul."
+            actionLabel="Tambah mobil"
+            onAction={restartOnboarding}
+          />
+        </AmCard>
+      ) : null}
+
+      {active ? <VehicleCard vehicle={active} /> : null}
+
+      {/* One car has nothing to switch to. §61: a control that cannot do
+          anything is worse than no control. */}
+      {options.length > 1 ? (
+        <AmSelect
+          label="Mobil aktif"
+          value={active?.id ?? null}
+          options={options}
+          onChange={setActiveVehicleId}
+        />
+      ) : null}
+    </TabScreen>
+  );
+}

@@ -9,6 +9,11 @@
  *
  * React Native needs neither: it imports `src/tokens.js` directly.
  *
+ * The `material`, `edge`, and `ground` groups are deliberately NOT emitted
+ * here. They are mobile-only (AM-15), and putting them into theme.css would
+ * add custom properties to the backoffice's Tailwind theme that nothing
+ * reads. When a web surface needs the material, emit it then.
+ *
  * No dependencies and no bundler. This runs on plain Node, which is what
  * keeps the package cheap enough that regenerating is never a chore.
  */
@@ -21,11 +26,15 @@ import {
   accent,
   brand,
   dark,
+  elevation,
   layout,
   light,
+  motion,
   radius,
   semantic,
   spacing,
+  type,
+  typeMobile,
   typography,
 } from "../src/tokens.js";
 
@@ -50,6 +59,38 @@ function themeVars(theme) {
 
 function scaleVars(prefix, scale, unit = "px") {
   return Object.entries(scale).map(([key, value]) => `  --${prefix}-${key}: ${value}${unit};`);
+}
+
+/** Composite `font` shorthands, with the family appended so callers write
+ *  `font: var(--type-hero);` and get the whole declaration. */
+function typeVars(prefix, scale) {
+  return Object.entries(scale).map(
+    ([key, value]) => `  --${prefix}-${key}: ${value} var(--font-sans);`,
+  );
+}
+
+/** The theme-independent half of the design system beyond colour: type
+ *  shorthands, motion, and the non-floating shadow. `--shadow-soft` is
+ *  theme-dependent and defined per theme instead (see the dark blocks). */
+function systemVars() {
+  return [
+    "",
+    "  /* Type scale (desktop) */",
+    ...typeVars("type", type),
+    "",
+    "  /* Type scale (mobile) */",
+    ...typeVars("type-m", typeMobile),
+    "",
+    "  /* Elevation — --shadow-soft is redefined per theme */",
+    `  --shadow-none: ${elevation.none};`,
+    `  --shadow-soft: ${elevation.soft.light};`,
+    "",
+    "  /* Motion */",
+    `  --duration-micro: ${motion.durationMicro};`,
+    `  --duration-standard: ${motion.durationStandard};`,
+    `  --duration-sheet: ${motion.durationSheet};`,
+    `  --ease-out: ${motion.easeOut};`,
+  ];
 }
 
 /**
@@ -80,11 +121,11 @@ function buildTokensCss() {
     "",
     "  /* Radius */",
     ...scaleVars("radius", radius),
-    `  --radius-pill: ${radius.pill}px;`,
     "",
     "  /* Typography */",
     `  --font-sans: ${typography.fontFamily};`,
     `  --font-numeric: ${typography.numericFeature};`,
+    ...systemVars(),
     "",
     "  /* Layout */",
     `  --page-padding: ${layout.pagePaddingMobile}px;`,
@@ -95,11 +136,13 @@ function buildTokensCss() {
     "@media (prefers-color-scheme: dark) {",
     '  :root:not([data-theme="light"]) {',
     ...themeVars(dark).map((line) => `  ${line}`),
+    `    --shadow-soft: ${elevation.soft.dark};`,
     "  }",
     "}",
     "",
     ':root[data-theme="dark"] {',
     ...themeVars(dark),
+    `  --shadow-soft: ${elevation.soft.dark};`,
     "}",
     "",
   ].join("\n");
@@ -129,6 +172,7 @@ function buildThemeCss() {
     ...Object.entries(radius).map(([key, value]) => `  --radius-${key}: ${value}px;`),
     "",
     `  --font-sans: ${typography.fontFamily};`,
+    ...systemVars(),
     "}",
     "",
     "/* Dark theme. Tailwind v4 reads these as the same variables, so every",
@@ -136,11 +180,13 @@ function buildThemeCss() {
     "@media (prefers-color-scheme: dark) {",
     '  :root:not([data-theme="light"]) {',
     ...Object.entries(dark).map(([key, value]) => `    --color-${kebab(key)}: ${value};`),
+    `    --shadow-soft: ${elevation.soft.dark};`,
     "  }",
     "}",
     "",
     ':root[data-theme="dark"] {',
     ...Object.entries(dark).map(([key, value]) => `  --color-${kebab(key)}: ${value};`),
+    `  --shadow-soft: ${elevation.soft.dark};`,
     "}",
     "",
   ].join("\n");

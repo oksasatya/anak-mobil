@@ -115,11 +115,12 @@ async fn json(response: Response) -> Value {
 /// registration answers with tokens and says nothing about who the account is.
 async fn a_person(app: &axum::Router, pool: &sqlx::PgPool) -> (String, Uuid) {
     let email = format!("admin-flow-{}@example.com", Uuid::now_v7());
+    let username = format!("u{}", &Uuid::now_v7().simple().to_string()[13..]);
     let response = send(
         app,
         "POST",
         "/auth/register",
-        Some(json!({ "email": email, "password": "kata sandi panjang" })),
+        Some(json!({ "email": email, "username": username, "password": "kata sandi panjang" })),
         None,
     )
     .await;

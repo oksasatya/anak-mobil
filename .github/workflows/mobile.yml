@@ -1,0 +1,60 @@
+name: mobile
+
+# A backend or landing commit must not trigger this job — the repo's stated
+# reason for having no task runner is that affected-only already exists in these
+# path filters.
+on:
+  push:
+    paths:
+      - "apps/mobile/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/mobile.yml"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # `--frozen-lockfile` is the `npm ci` equivalent: it fails rather than
+      # updating bun.lock, so CI cannot resolve a different tree than the one
+      # committed — and it is the gate's "no nested lockfile drift" check.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # Formatting is repo-wide and runs from the root, where .prettierignore
+      # applies. Prettier owns JS/TS/Astro/CSS/JSON; cargo fmt owns apps/api.
+      - name: Format check
+        run: bun run format:check
+
+      # Identical to `make mb-check`: generate typed routes -> tsc --noEmit ->
+      # expo lint. No native build and no EAS build here; CI proves the code is
+      # type-clean and lint-clean only. The native build is local (expo run:*)
+      # and the cloud build is on demand.
+      - name: Type check and lint
+        run: bun run --filter @anakmobil/mobile check
+
+      # The session layer's guards are ORDERING properties — a request overtaken
+      # by a sign-out must not refresh, a spent refresh token must never be
+      # replayed, a sign-out must complete even when its teardown throws. The
+      # step above cannot see any of them: they type-check and lint perfectly
+      # either way. Without this step, every guard in that layer can be deleted
+      # one line at a time with this job still green, and the failure it lets
+      # through is every session on every device being revoked.
+      #
+      # Runs under Bun, like the rest of the JS toolchain. No native module is
+      # imported — the tests fake readSession, currentEpoch, and fetch — so this
+      # needs no simulator and no native build.
+      - name: Session tests
+        run: bun run --filter @anakmobil/mobile test

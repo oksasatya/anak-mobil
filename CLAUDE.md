@@ -65,6 +65,10 @@ Bun's `--filter <package>` is the equivalent of npm's `--workspace <package>`, a
 
 Node is not required. Bun runs the Astro build and the `node:test` suites in `packages/tokens` unchanged.
 
+**Prettier formats every JavaScript, TypeScript, Astro, CSS, and JSON file; `cargo fmt` owns `apps/api`.** It runs from the repository root — `make fmt` to write, `make fmt-check` to verify — because `.prettierignore` is resolved relative to the working directory, so a `prettier` invoked from inside a workspace silently ignores the root ignore file and starts checking `dist/`, generated declarations, and tool caches. That is why formatting is a Make prerequisite of `fe-check` and `mb-check` rather than a line inside each workspace's own `check` script.
+
+Markdown is deliberately excluded. The specs, plans, and READMEs here are wrapped by hand, and Prettier's rewrapping would churn prose that was composed to read a particular way.
+
 **One exception is expected, and it is not a failure of this decision.** `apps/mobile` will use Expo, which is the slowest part of the JavaScript ecosystem to accommodate Bun — `bun install` generally works, but Metro and parts of the Expo CLI have historically assumed npm or yarn. If that bites, the answer is that **`apps/mobile` alone** uses a different package manager, not that the repository reverts. Verify before scaffolding it rather than assuming either way.
 
 ### No task runner, and what would change that

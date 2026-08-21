@@ -1,0 +1,41 @@
+---
+/**
+ * Selection chip. Mirrors the design system's AmChip (docs/design.md §45):
+ * selected state is the controlled orange — a tinted fill with an orange
+ * border and text.
+ *
+ * Rendered as a span, not a button, because on the landing these appear only
+ * as non-interactive previews ("this is the shape a scoped question takes").
+ * A real button that does nothing would be a dead control; a labelled preview
+ * is honest.
+ */
+export interface Props {
+  selected?: boolean;
+  class?: string;
+}
+const { selected = false, class: className } = Astro.props;
+const classes = ["chip", selected && "selected", className].filter(Boolean).join(" ");
+---
+
+<span class={classes}><slot /></span>
+
+<style>
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font: 600 13px/1 var(--font-sans);
+    white-space: nowrap;
+  }
+  .selected {
+    background: color-mix(in srgb, var(--accent-500) 10%, transparent);
+    border-color: var(--accent-500);
+    color: var(--accent-600);
+  }
+</style>

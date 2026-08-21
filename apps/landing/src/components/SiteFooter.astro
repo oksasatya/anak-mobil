@@ -1,0 +1,209 @@
+---
+/**
+ * Site footer: brand, page links, the honest "not in the stores yet" note,
+ * and a real contact + privacy line. Nothing here is invented — the app is
+ * not available, and the footer says so rather than linking to dead stores.
+ */
+import Icon from "./Icon.astro";
+---
+
+<footer class="foot">
+  <div class="top">
+    <div class="brand-col">
+      <a class="brand" href="/" aria-label="AnakMobil.id beranda">
+        <span class="mark">
+          <img src="/mark-dark.png" alt="" width="26" height="26" />
+        </span>
+        <span class="word">AnakMobil<span class="dot">.id</span></span>
+      </a>
+      <p class="tagline">
+        Garasi digital dan komunitas untuk pemilik mobil di Indonesia. Mobil lo. Build lo. Komunitas
+        lo.
+      </p>
+    </div>
+
+    <div class="cols">
+      <div class="col">
+        <div class="am-label kicker">Halaman</div>
+        <nav class="col-links" aria-label="Halaman">
+          <a href="/">Beranda</a>
+          <a href="/fitur">Fitur</a>
+          <a href="/komunitas">Komunitas</a>
+          <a href="/tentang">Tentang</a>
+          <a href="/daftar">Daftar waitlist</a>
+        </nav>
+      </div>
+
+      <div class="col narrow">
+        <div class="am-label kicker">Aplikasi</div>
+        <p class="muted">Belum tersedia di App Store / Play Store.</p>
+        <a class="accent-link" href="/daftar">Daftar waitlist — kami kabari begitu rilis.</a>
+      </div>
+
+      <div class="col narrow">
+        <div class="am-label kicker">Kontak &amp; privasi</div>
+        <a class="muted-link" href="mailto:halo@anakmobil.id">halo@anakmobil.id</a>
+        <p class="muted">
+          Email waitlist disimpan hanya untuk kabar peluncuran — tidak dibagikan ke siapa pun.
+        </p>
+        <a class="privacy-link" href="/privasi">Kebijakan privasi</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="bottom-inner">
+      <span class="fine">© 2026 AnakMobil.id — dibangun terbuka, mulai dari kosong.</span>
+      <a class="repo" href="https://github.com/oksasatya/anak-mobil" rel="noopener">
+        <Icon name="github" size={14} />
+        oksasatya/anak-mobil
+      </a>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .foot {
+    border-top: 1px solid var(--color-border);
+    background: var(--color-background);
+  }
+  .top {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: clamp(36px, 6vw, 56px) clamp(16px, 4vw, 28px) 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 36px;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .brand-col {
+    flex: 1 1 250px;
+    min-width: 230px;
+    max-width: 380px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+  .mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    overflow: hidden;
+    flex: none;
+    display: block;
+  }
+  .mark img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    transform: scale(1.07);
+  }
+  .word {
+    font: 750 19px/1 var(--font-sans);
+    color: var(--color-text-primary);
+    letter-spacing: -0.01em;
+  }
+  .dot {
+    color: var(--accent-500);
+  }
+  .tagline {
+    font: 400 13px/20px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin-top: 8px;
+  }
+
+  .cols {
+    display: flex;
+    gap: clamp(28px, 5vw, 64px);
+    flex-wrap: wrap;
+  }
+  .narrow {
+    max-width: 250px;
+  }
+  .kicker {
+    color: var(--color-text-tertiary);
+    margin-bottom: 10px;
+  }
+  .col-links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .col-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    font: 400 13px/1 var(--font-sans);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+  }
+  .col-links a:hover {
+    color: var(--color-text-primary);
+  }
+  .muted {
+    font: 400 13px/20px var(--font-sans);
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+  .muted-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    font: 400 13px/1 var(--font-sans);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+  }
+  .accent-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    font: 600 13px/1 var(--font-sans);
+    color: var(--accent-600);
+    text-decoration: none;
+  }
+  .privacy-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    font: 600 13px/1 var(--font-sans);
+    color: var(--color-text-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .bottom {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 28px) 26px;
+  }
+  .bottom-inner {
+    border-top: 1px solid var(--color-border);
+    padding-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fine {
+    font: 400 12px/17px var(--font-sans);
+    color: var(--color-text-tertiary);
+  }
+  .repo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    font: 400 12px/17px var(--font-sans);
+    color: var(--color-text-tertiary);
+    text-decoration: none;
+  }
+  .repo:hover {
+    color: var(--color-text-secondary);
+  }
+</style>

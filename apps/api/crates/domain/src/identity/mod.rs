@@ -9,3 +9,5 @@
 //! Note that platform role (admin/user) is a different thing from
 //! community membership role (owner/admin/member), which belongs to
 //! [`crate::knowledge`]. Do not merge them.
+
+pub mod username;
