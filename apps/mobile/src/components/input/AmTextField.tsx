@@ -5,6 +5,7 @@ import {
   TextInput,
   View,
   type KeyboardTypeOptions,
+  type TextInputProps,
   type ViewStyle,
 } from "react-native";
 
@@ -20,6 +21,12 @@ export interface AmTextFieldProps {
   readonly disabled?: boolean;
   readonly secureTextEntry?: boolean;
   readonly keyboardType?: KeyboardTypeOptions;
+  readonly autoCapitalize?: TextInputProps["autoCapitalize"];
+  readonly autoCorrect?: boolean;
+  /** Password-manager and keyboard hints. "email" | "username" | "new-password" | "current-password". */
+  readonly autoComplete?: TextInputProps["autoComplete"];
+  readonly textContentType?: TextInputProps["textContentType"];
+  readonly maxLength?: number;
   readonly style?: ViewStyle;
 }
 
@@ -43,6 +50,11 @@ export function AmTextField({
   disabled = false,
   secureTextEntry,
   keyboardType,
+  autoCapitalize,
+  autoCorrect,
+  autoComplete,
+  textContentType,
+  maxLength,
   style,
 }: AmTextFieldProps) {
   const theme = useTheme();
@@ -69,6 +81,11 @@ export function AmTextField({
         placeholderTextColor={theme.color.textTertiary}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        maxLength={maxLength}
         style={[
           theme.type["body-lg"],
           styles.input,
