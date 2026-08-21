@@ -302,20 +302,33 @@ mb-reverse: ## Bridge the API port into an attached Android device (localhost:80
 		&& echo 'adb reverse tcp:8080 -> host (localhost:8080 now reaches the API)' \
 		|| echo 'no Android device attached — start one, then re-run `make mb-reverse`'
 
+# Each target sources its variant file and then the matching .local override,
+# in that order, because the LAST assignment wins in a shell and the whole
+# point of a .local is to beat the committed placeholder.
+#
+# It has to happen here, not only inside Expo. `set -a` exports these into the
+# process, and a value already in the environment beats every .env file Expo
+# reads afterwards — so exporting the committed empty placeholder would make
+# the .local file unreachable. That is how the Brandfetch client id, which is
+# deliberately kept out of this public repository, reaches a development build.
+#
 # LANG/LC_ALL are not cosmetic. Without a UTF-8 locale CocoaPods crashes inside
 # its OWN error reporter — `Encoding::CompatibilityError` in `unicode_normalize`
 # — which swallows whatever the real error was and prints a Ruby backtrace
 # instead. Diagnosing that costs an hour; setting it costs a line.
 mb-run-dev: ## Build+run the development variant on a device (p=ios|android)
-	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; set +a; \
+	@set -a; [ -f $(MOBILE_DIR)/.env.development ] && . ./$(MOBILE_DIR)/.env.development; \
+		[ -f $(MOBILE_DIR)/.env.development.local ] && . ./$(MOBILE_DIR)/.env.development.local; set +a; \
 		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=development bunx expo run:$(p)
 
 mb-run-preview: ## Build+run the preview variant on a device (p=ios|android)
-	@set -a; [ -f $(MOBILE_DIR)/.env.preview ] && . ./$(MOBILE_DIR)/.env.preview; set +a; \
+	@set -a; [ -f $(MOBILE_DIR)/.env.preview ] && . ./$(MOBILE_DIR)/.env.preview; \
+		[ -f $(MOBILE_DIR)/.env.preview.local ] && . ./$(MOBILE_DIR)/.env.preview.local; set +a; \
 		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=preview bunx expo run:$(p)
 
 mb-run-prod: ## Build+run the production variant on a device (p=ios|android)
-	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; set +a; \
+	@set -a; [ -f $(MOBILE_DIR)/.env.production ] && . ./$(MOBILE_DIR)/.env.production; \
+		[ -f $(MOBILE_DIR)/.env.production.local ] && . ./$(MOBILE_DIR)/.env.production.local; set +a; \
 		cd $(MOBILE_DIR) && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=production bunx expo run:$(p)
 
 # --- Formatting ---------------------------------------------------------------

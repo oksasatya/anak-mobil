@@ -1,4 +1,6 @@
 export { AmBrandLockup } from "./AmBrandLockup";
+export { AmBrandLogo } from "./AmBrandLogo";
+export type { AmBrandLogoProps } from "./AmBrandLogo";
 export type { AmBrandLockupProps } from "./AmBrandLockup";
 export { AmCard } from "./AmCard";
 export type { AmCardProps } from "./AmCard";

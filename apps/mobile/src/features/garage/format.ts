@@ -45,9 +45,20 @@ export function formatRupiah(decimal: string): string {
   return `${negative ? "-" : ""}Rp ${groupThousands(digits)}`;
 }
 
+/**
+ * 146120 -> "146.120". The bare figure, with no unit.
+ *
+ * The odometer on the vehicle card sets the number and its unit at different
+ * sizes, so it needs the two apart. Stripping " km" back off the string below
+ * would work until the day the unit changes and the regex quietly does not.
+ */
+export function formatKilometreValue(km: number): string {
+  return groupThousands(Math.trunc(km).toString());
+}
+
 /** 146120 -> "146.120 km". */
 export function formatKilometres(km: number): string {
-  return `${groupThousands(Math.trunc(km).toString())} km`;
+  return `${formatKilometreValue(km)} km`;
 }
 
 /**

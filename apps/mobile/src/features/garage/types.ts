@@ -27,6 +27,12 @@ export interface VehicleSummary {
 export interface Vehicle {
   readonly id: string;
   readonly variant_id: string | null;
+  /**
+   * The brand primary domain — `toyota.com`. Null when the car is not matched
+   * to a catalog variant, which is also when there is no brand to draw. The
+   * client composes the logo URL from it; see features/catalog/brandLogo.ts.
+   */
+  readonly brand_logo_domain: string | null;
   /** The nickname, else the catalog name, else what the owner typed. Never empty. */
   readonly name: string;
   readonly nickname: string | null;
