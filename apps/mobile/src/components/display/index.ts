@@ -1,3 +1,5 @@
+export { AmBrandLockup } from "./AmBrandLockup";
+export type { AmBrandLockupProps } from "./AmBrandLockup";
 export { AmCard } from "./AmCard";
 export type { AmCardProps } from "./AmCard";
 export { AmChip } from "./AmChip";
