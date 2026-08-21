@@ -290,31 +290,36 @@ test("single-flight: concurrent 401s issue exactly one refresh", async () => {
  */
 const APP_DIR = fileURLToPath(new URL("../src/app", import.meta.url));
 
-test("each group layout wraps its <Stack> in the matching gate", () => {
-  const groups: Array<{ file: string; gate: string }> = [
-    { file: "(app)/_layout.tsx", gate: "AppGate" },
-    { file: "(auth)/_layout.tsx", gate: "AuthGate" },
-    { file: "(onboarding)/_layout.tsx", gate: "OnboardingGate" },
+test("each group layout wraps its navigator in the matching gate", () => {
+  // `(app)` moved from `<Stack>` to `<Tabs>` in Plan C Task 2 — the group's
+  // own tab navigator, per-tab `<Stack>`s live one level down in
+  // components/shell/TabStack.tsx. `(auth)` and `(onboarding)` are untouched
+  // by this plan and still wrap `<Stack>` directly.
+  const groups: Array<{ file: string; gate: string; navigator: string }> = [
+    { file: "(app)/_layout.tsx", gate: "AppGate", navigator: "<Tabs" },
+    { file: "(auth)/_layout.tsx", gate: "AuthGate", navigator: "<Stack" },
+    { file: "(onboarding)/_layout.tsx", gate: "OnboardingGate", navigator: "<Stack" },
   ];
 
-  for (const { file, gate } of groups) {
+  for (const { file, gate, navigator } of groups) {
     const source = readFileSync(join(APP_DIR, file), "utf8");
     const openTag = source.indexOf(`<${gate}>`);
     const closeTag = source.lastIndexOf(`</${gate}>`);
     // Searched from `openTag`, not from 0: each of these files has a comment
-    // above the gate ("Plan C replaces the `<Stack>` body...") that also
-    // contains the literal text "<Stack" — starting the search at the gate's
-    // own open tag skips that false match and finds only the real JSX usage.
-    const stackTag = source.indexOf("<Stack", openTag);
+    // above the gate that may also contain the literal navigator text (e.g.
+    // "Plan C replaces the `<Stack>` body...") — starting the search at the
+    // gate's own open tag skips that false match and finds only the real JSX
+    // usage.
+    const navigatorTag = source.indexOf(navigator, openTag);
 
     // Deleting `<AppGate>` from `(app)/_layout.tsx` — the exact defect the
     // component-not-inline design exists to prevent — leaves openTag at -1.
     expect(openTag).toBeGreaterThanOrEqual(0);
     expect(closeTag).toBeGreaterThan(openTag);
-    // `<Stack>` must sit strictly between the gate's open and close tags —
-    // unwrapping the Stack (or the gate) trips one of these instead.
-    expect(stackTag).toBeGreaterThan(openTag);
-    expect(stackTag).toBeLessThan(closeTag);
+    // The navigator must sit strictly between the gate's open and close tags
+    // — unwrapping it (or the gate) trips one of these instead.
+    expect(navigatorTag).toBeGreaterThan(openTag);
+    expect(navigatorTag).toBeLessThan(closeTag);
   }
 });
 
@@ -346,4 +351,43 @@ test("every route file outside catalog.tsx and the entry index.tsx lives inside 
       expect(topLevelName.startsWith("(") && topLevelName.endsWith(")")).toBe(true);
     }
   }
+});
+
+/**
+ * AC1's STACK half had no assertion anywhere, and that is why this exists.
+ *
+ * Task 2 moved `<Stack>` out of `(app)/_layout.tsx` and down into
+ * `components/shell/TabStack.tsx`, rendered by each tab's own `_layout.tsx`.
+ * Nothing referenced `TabStack` from a test — so deleting any tab's
+ * `_layout.tsx` left the route still rendering (expo-router falls back to the
+ * parent navigator), silently collapsed that tab's independent navigation
+ * stack, and the suite stayed green. Found in Task 2's review.
+ *
+ * Filesystem + readFileSync, the same shape as the gate test above, because
+ * this repository's runner has no React renderer.
+ */
+test("every tab owns its own navigation stack", () => {
+  const tabs = ["home", "garage", "explore", "community", "profile"];
+
+  for (const tab of tabs) {
+    const layout = join(APP_DIR, "(app)", tab, "_layout.tsx");
+    const source = readFileSync(layout, "utf8");
+    // Deleting the file throws here; rendering something other than TabStack
+    // fails the assertion. Either way AC1's stack half stops being silent.
+    expect(source).toContain("<TabStack");
+  }
+});
+
+test("nothing re-enables the tab-reset behaviour AC1 forbids", () => {
+  // `popToTopOnBlur: false` IS AC1's stack half, and `unmountOnBlur` destroys
+  // the scroll half. Both are correct BY DEFAULT, which means a future edit
+  // can break them by ADDING a line — the case a structural test catches and
+  // a screenshot does not.
+  // Matches an actual prop assignment (`popToTopOnBlur:` or `=`), not the bare
+  // word — both names are DISCUSSED in comments in that file precisely because
+  // leaving them unset is deliberate, and a test that forbade the word would
+  // punish the comment that explains the decision.
+  const layout = readFileSync(join(APP_DIR, "(app)", "_layout.tsx"), "utf8");
+  expect(layout).not.toMatch(/popToTopOnBlur\s*[:=]/);
+  expect(layout).not.toMatch(/unmountOnBlur\s*[:=]/);
 });
