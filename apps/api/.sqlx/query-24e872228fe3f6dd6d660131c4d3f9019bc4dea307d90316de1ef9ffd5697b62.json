@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT pg_get_indexdef(c.oid) AS \"def!\"\n             FROM pg_class c WHERE c.relname = 'jobs_claimable_idx'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "def!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "24e872228fe3f6dd6d660131c4d3f9019bc4dea307d90316de1ef9ffd5697b62"
+}

@@ -39,6 +39,7 @@ pub mod auth;
 pub mod builds;
 pub mod catalog;
 pub mod garage;
+pub mod jobs;
 pub mod part_merge;
 pub mod parts;
 pub mod profile;
