@@ -1,22 +1,21 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Redirect } from "expo-router";
 
-import { useTheme } from "@/theme";
+import { useSession } from "@/shared";
 
-// ponytail: a placeholder so the gate has somewhere to redirect to and can be
-// demonstrated. Plan D replaces this group with the profile step, the six-step
-// wizard, and the aha screen.
-export default function OnboardingPlaceholder() {
-  const theme = useTheme();
-  return (
-    <View style={[styles.container, { padding: theme.space[6], gap: theme.space[3] }]}>
-      <Text style={[theme.type.h3, { color: theme.color.textPrimary }]}>Lengkapi profil</Text>
-      <Text style={[theme.type.body, { color: theme.color.textSecondary }]}>
-        Langkah profil dan mobil pertama menyusul.
-      </Text>
-    </View>
-  );
+/**
+ * Where `/(onboarding)` lands.
+ *
+ * `gates.tsx` sends anybody who still owes a display name or a first car to
+ * this group without saying which of the two is missing, so the split is made
+ * here. The order matches the wizard's own: a name first, because the aha
+ * screen and the garage both greet somebody by it.
+ *
+ * `displayName` alone, not `needsProfile`'s full test — the username half is
+ * collected at registration (AM-50), so a signed-in account that reaches this
+ * route with a null username has a problem no onboarding step can fix.
+ */
+export default function OnboardingEntry() {
+  const { user } = useSession();
+  if (user?.displayName == null) return <Redirect href="/(onboarding)/profile" />;
+  return <Redirect href="/(onboarding)/vehicle" />;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center" },
-});
