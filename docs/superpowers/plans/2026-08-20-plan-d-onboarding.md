@@ -159,16 +159,42 @@ React Native's: the sheet wraps its content in a `GestureDetector` running a
 `Gesture.Pan()`, and RNGH's scrollable is the one that composes with a parent
 pan instead of fighting it. See the fallback in the environment card.
 
-### 5. Saving a vehicle without invalidating `me` puts the gate in a loop
+### 5. Saving a vehicle without refreshing `me` puts the gate in a loop
 
 The onboarding gate routes on `Me.hasVehicles` (spec, §Bootstrap). After
 `POST /vehicles` succeeds, that cached value is still `false`. Navigating
-before the `me` query is invalidated **and awaited** sends the person to a
-route the gate immediately bounces back into the wizard.
+before it is refreshed **and awaited** sends the person to a route the gate
+immediately bounces back into the wizard.
 
 Just as important, the branch in AM-113 AC5 — aha screen for the first car,
-elsewhere otherwise — must read `hasVehicles` **before** the invalidation
-flips it. Capture it first, then invalidate.
+elsewhere otherwise — must read `hasVehicles` **before** the refresh flips
+it. Capture it first, then refresh.
+
+**CORRECTED 2026-08-22, and this is a mechanism change rather than wording.**
+This plan said "invalidate the `me` query" and named `["me"]` as its key.
+**There is no such query.** `/me` is not in the query cache at all:
+`useSession` reads a zustand store (`shared/session/store.ts`) that only
+`setSignedIn` and `setUser` write, and `refreshMe()` (`shared/api/me.ts`,
+exported from `@/shared`) is the one function that re-reads `/me` and writes
+that store. `queryClient.invalidateQueries({ queryKey: ["me"] })` would
+resolve immediately, invalidate nothing, and leave `hasVehicles` false — the
+exact gate loop this finding exists to prevent. The Home screen already
+carries this correction in a comment (`app/(app)/home/index.tsx`), written
+after Plan C hit the same trap.
+
+So the save sequence is:
+
+```ts
+const wasFirstCar = !user.hasVehicles;          // BEFORE anything refreshes it
+const { id } = await createVehicle(input);
+setActiveVehicleId(id);                          // AC5: the new car is active
+await refreshMe();                               // flips hasVehicles -> gate opens
+await queryClient.invalidateQueries({ queryKey: vehiclesQueryKey });
+router.replace(wasFirstCar ? "/(onboarding)/aha" : "/(app)/garage");
+```
+
+`vehiclesQueryKey` is `["vehicles"] as const`, already exported from
+`features/garage/queries.ts` — import it, do not re-declare the literal.
 
 ### 6. Two destinations named by the tickets do not exist yet
 
@@ -272,8 +298,13 @@ it shipped none, these are new files. Read before writing.
 7. NEVER put a changing `key` on a View wrapping {children} at the app root —
    it unmounts the subtree and discards state, which would destroy a wizard
    draft held in component state.
-8. apps/mobile has NO test runner and this work does not add one. tsconfig
-   strict; `@typescript-eslint/no-explicit-any: error`.
+8. CORRECTED 2026-08-22 — apps/mobile HAS a test runner. Plan B added it:
+   `bun test test/`, wired into `make mb-check`, 110 tests today. It has NO
+   React renderer and no @testing-library, so a component cannot be rendered:
+   pure functions are testable directly, and a rule that only exists inside a
+   component is held by a source-text assertion (readFileSync + regex), the
+   technique test/session.test.ts and test/add-actions.test.ts already use.
+   tsconfig strict; `@typescript-eslint/no-explicit-any: error`.
 9. The AM-15 design system is complete and MUST be used — apps/mobile/src/app/
    catalog.tsx is the worked example.
 10. Never set allowFontScaling={false}.
@@ -302,14 +333,30 @@ it shipped none, these are new files. Read before writing.
     the accepted literals into .expo/types. Write "/(onboarding)/aha" first;
     if tsc rejects it, use "/aha". Run `make mb-check` to regenerate the
     types — do not hand-edit them.
-16. PLAN A OWNS THESE AND THEY MUST BE READ, NEVER ASSUMED: the TanStack Query
-    key for GET /me (written below as ["me"]) and for GET /vehicles (["vehicles"]);
-    whether apiRequest<T> returns the envelope or the unwrapped `data` (this
-    plan assumes UNWRAPPED); whether an MMKV StateStorage adapter for zustand
-    already exists in shared/api/queryClient.ts (reuse it if so); and the
-    display-name validation rule the server applies to PATCH /me. Open
-    apps/mobile/src/shared/ before writing a line that depends on any of them,
-    and correct this plan file in place if it is wrong.
+16. ANSWERED 2026-08-22 by reading Plan A's code. These were the four things
+    this plan told an implementer to verify; here are the verified answers, so
+    nobody spends the reads again:
+
+    a. GET /me has NO query key, because it is NOT a react-query query.
+       `useSession` reads a zustand store written only by setSignedIn/setUser;
+       `refreshMe()` from "@/shared" is what re-reads it. See finding 5.
+    b. GET /vehicles is `vehiclesQueryKey` = ["vehicles"] as const, exported
+       from features/garage/queries.ts. Import it; do not re-declare it.
+    c. apiRequest<T> returns the UNWRAPPED data — `apiRequest<Me>("/me")`
+       resolves a `Me`, never `{meta, data, error}`. The plan's assumption
+       was right.
+    d. There is NO zustand persist middleware and no StateStorage adapter
+       anywhere. The established pattern is plain `create()` plus direct
+       synchronous MMKV reads and writes — shared/vehicle/activeVehicle.ts is
+       the worked example, and Task 2's two stores follow it exactly rather
+       than introducing `persist`. MMKV v4 instantiates via `createMMKV({id})`,
+       never `new MMKV()`.
+    e. PATCH /me display_name (adapter/http/profile.rs:48-100): trimmed; must
+       be non-empty; at most 60 characters; must contain at least one
+       alphanumeric; and must contain no control, invisible, or bidi-override
+       character. Its three messages are Indonesian and arrive as field errors
+       on `display_name` — "Nama tidak boleh kosong.", "Nama terlalu panjang.
+       Maksimal 60 karakter.", "Nama harus berisi huruf atau angka."
 17. To see an EMPTY catalog step, run `make db-drop` (migrates, does not seed).
     To see a populated one, follow it with `make db-seed`. An empty step is a
     real state, not an error.
@@ -2148,14 +2195,43 @@ Neither blocks execution.
 
 ## Execution status
 
+**Run shape, stated honestly up front: every task was written INLINE by the
+controller, and no task had an independent writer or an independent reviewer.**
+Subagent dispatch was disabled for this session, so §28a's writer/reviewer
+separation — the thing this execution mode is actually built on — did not run
+at all. What did run: the gates after every task, a full simulator pass over
+every screen in both themes, and the controller's own reading of each diff.
+That is inline execution with a thorough verification pass, and calling it
+anything else would overstate it. Two defects below were caught by opening the
+app, not by the gate; a second reader would plausibly have caught the routing
+one from the diff alone.
+
 | Task | Status | Notes |
 |---|---|---|
-| 1 — vehicle API layer | not started | |
-| 2 — draft + seen-aha stores | not started | |
-| 3 — AmSelect scroll + placeholder | not started | |
-| 4 — profile step | not started | |
-| 5 — the six-step wizard | not started | |
-| 6 — the aha screen | not started | |
+| 1 — vehicle API layer | done, written inline | Step 4's three assumptions all verified CORRECT against Plan A: `apiRequest` returns unwrapped data, serialises `body` itself, and `ApiError` is on the `@/shared` barrel. Routes and response field names checked against `adapter/http/{catalog,vehicles}.rs`. One defect found by opening the app — see ledger 2. |
+| 2 — draft + seen-aha stores | done, written inline | Plan's `new MMKV({id})` corrected to `createMMKV({id})` and `.delete` to `.remove` (v4 Nitro API, matching `activeVehicle.ts`). The adapter went in its own `storage.ts` rather than inside `draft.ts`, so `ahaSeen.ts` does not import a store to get a storage handle. `signOut.ts` gained the two `clear()` calls in the existing guarded span, plus a test that fails if either is deleted. |
+| 3 — AmSelect scroll + placeholder | done, written inline | The plan's reproduction step (temporarily extending `TRANSMISSIONS` to forty entries) was skipped as unnecessary: the seeded catalog has **73 brands**, which is the real case and a better one. Verified on device — the sheet caps at half the viewport, the list scrolls inside it, and dragging the sheet still dismisses it, so RNGH's `ScrollView` composes with the parent pan as intended. `VehiclePhotoPlaceholder` dropped the plan's explicit `borderColor`/`borderRadius`/`borderWidth`: `AmMaterial role="working"` already draws all three, and re-declaring them is a second source of truth for one edge. |
+| 4 — profile step | done, written inline | **The plan contradicted itself and the code follows the server, not the plan.** Step 1 says "mirror the server rule; do not invent a different one"; Step 2's code then invents `MIN_NAME = 2` / `MAX_NAME = 50`. The server's actual rule is non-empty after trim, ≤60 characters, and at least one alphanumeric — so a one-character name is valid, and the screen now enables the button on one character. Verified on device: typing `B` enables it. Also corrected: the plan's `queryClient.setQueryData(["me"], me)` (see ledger 1) and its raw-`Text` error banner, replaced with `FormNotice`, which already carries the live region, the alert role, and §53's not-colour-alone glyph. Opened in **both themes**: empty, one-character, valid, and submit. |
+| 5 — the six-step wizard | done, written inline | Route literals all typechecked on the first run, so no path was a wrong guess. Two behaviour corrections against the plan: `refreshMe()` in place of the two `invalidateQueries` calls (ledger 1), and `draft.clear()` moved to AFTER the navigation — clearing first drops the wizard back to step one for the frame between the reset and the route change, which reads as the work being thrown away. Step 8's four checks: see below. |
+| 6 — the aha screen | done, written inline | **Structurally relocated from `(onboarding)/aha.tsx` to `app/aha.tsx`** — ledger 3, the one defect that made a whole screen unreachable. Verified on device in both themes, including that no zero appears anywhere on it. |
+
+### Task 5, Step 8 — the four checks with no test
+
+1. **Back preserves — PASS.** Toyota → Avanza, back to the brand step, forward again: the model was still Avanza. (Reached by accident, then repeated deliberately.)
+2. **Change clears — NOT RUN.** The cascade's clearing half was never exercised on device. Its guard is three identical early-returns in `draft.ts` and check 1 proves the guard fires; the clearing branch is the `set({...})` beside it. Still an untested path — say so rather than implying it was covered.
+3. **Force-close resumes — PASS.** Reached step 3 (Generasi) with brand and model chosen, terminated the process, relaunched: the wizard reopened on step 3 with "Langkah 3 dari 6" and both earlier choices intact.
+4. **A second account sees nothing — PASS.** Signed out mid-flow and signed in as a different account: the profile step came up empty and the wizard started at the brand step. `adoptUser` did its job.
+
+### What was NOT exercised on device, and it should be said plainly
+
+- The **loading skeletons** — a local API answers faster than they render.
+- The **three empty states** (`AmEmptyState` on brand, on a childless level, on a variant-less generation). They need a database seeded to have a hole in it; the seeded catalog has none.
+- The **non-first-car path** — the success toast and the redirect to the garage rather than the aha screen.
+- The **end-to-end walk time** AM-55's technical note asks for (under 90 seconds). The walk was done four times but always interleaved with screenshots and inspection, so any number from it would be fiction.
+
+### What the run DID exercise on device, both themes
+
+Profile (empty · one character · valid · submit) · every wizard step against the real seeded catalog · the picker sheet capped and scrolling over 73 options · AC2's narrowing (a Toyota brand yields only Toyota models) · the year list on **both** generation branches (open-ended → ends at the current year; closed → exactly the generation's bounds) · AC3's variant skip · the photo placeholder · save → aha for a first car · AC4's never-again redirect via a deep link · the error state with a **working** retry.
 
 Record here, per task: corrections the plan got wrong, deliberate cuts,
 defects found and how they were closed, whether the task was written inline or
@@ -2169,6 +2245,9 @@ from its Step 8; Task 6 records the end-to-end walk time.
 
 | # | Task | Severity | File:line | Failure scenario | Smallest fix | Closed by |
 |---|---|---|---|---|---|---|
+| 1 | 4, 5 | structural | plan §Findings 5; `(app)/home/index.tsx` already carried the correction | The plan told both screens to `invalidateQueries({ queryKey: ["me"] })` after saving. **There is no `["me"]` query** — `/me` is a zustand store, not a cached query — so the call resolves instantly having invalidated nothing, `hasVehicles` stays `false`, and the onboarding gate bounces the person straight back into the wizard they just finished. | `await refreshMe()`, which is the one function that re-reads `/me` and writes the store. | Fixed before either screen was written; the plan file corrected in place, since a wrong sentence there reproduces the defect in the next ticket. |
+| 2 | 1 | correctness | `features/vehicle/catalog.ts` `generationOptions` | Every seeded generation name already contains its own year range, so appending `· ${g.years}` rendered **"Gen 3 (2022–kini) · 2022–"**. It reads as a data fault rather than a label, on the step where a person is trying to recognise their own car. | Append the years only when the name does not already contain them. | Fixed and re-verified on device: "CJ4 EX (2008–2017)", "G20 (2019–kini)". |
+| 3 | 6 | structural | `app/(onboarding)/aha.tsx` → `app/aha.tsx` | **The aha screen could never render.** `OnboardingGate` redirects the entire `(onboarding)` group to `(app)` as soon as `!needsProfile && !needsFirstVehicle`, and the save sequence sets `hasVehicles: true` before it navigates — so the screen celebrating the first car was redirected away the instant it was reached. Confirmed on device: the wizard went straight to the home tab and AM-56 shipped as dead code. | Move the route to `app/aha.tsx`, beside `catalog.tsx`, outside every group gate, and give it its own signed-in check. `gates.tsx` is untouched — its own comment puts it off-limits to this plan. | Fixed and verified: the aha screen now renders for a first car, and a deep link back to it after it has been seen redirects home. The existing structural test that forbids ungrouped routes was widened by exactly one name **and strengthened** — an ungrouped route must now prove it carries its own redirect, so the exemption cannot quietly become a hole. |
 
 Severity vocabulary: `structural` (a column, constraint, or public contract —
 raise and fix immediately) · `correctness` · `test-integrity` · `hygiene`.
