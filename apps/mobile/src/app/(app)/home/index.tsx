@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { AmCard } from "@/components/display";
-import { AmButton } from "@/components/input";
 import { TabScreen } from "@/components/shell";
 import { AmEmptyState, AmErrorState, AmSkeleton } from "@/components/state";
 import { useVehicles } from "@/features/garage/queries";
@@ -11,7 +10,7 @@ import { VehicleCard } from "@/features/garage/VehicleCard";
 import { VehicleSwitcher } from "@/features/garage/VehicleSwitcher";
 import { errorBody } from "@/features/shell/errorCopy";
 import { refreshMe, setActiveVehicleId, useSession } from "@/shared";
-import { kicker, useTheme } from "@/theme";
+import { useTheme } from "@/theme";
 
 /**
  * §19: Home is not an infinite feed. Header, the selected vehicle, and what
@@ -91,29 +90,12 @@ export default function HomeScreen() {
       ) : null}
 
       {active ? (
-        <>
-          {/*
-            The kicker and the switcher are rendered HERE, by the screen, and
-            not inside VehicleCard — a control nested inside the card renders
-            but never fires on this build (see the note on VehicleCard). §61
-            still applies: one car has nothing to switch to, so with one car
-            the control is absent rather than present-and-inert.
-          */}
-          <View style={[styles.header, { marginBottom: -theme.space[3] }]}>
-            <Text style={[theme.type.micro, kicker, { color: theme.color.textTertiary }]}>
-              Mobil aktif
-            </Text>
-            {list.length > 1 ? (
-              <AmButton
-                label="Ganti"
-                variant="ghost"
-                size="sm"
-                onPress={() => setSwitching(true)}
-              />
-            ) : null}
-          </View>
-          <VehicleCard vehicle={active} />
-        </>
+        <VehicleCard
+          vehicle={active}
+          // §61: one car has nothing to switch to, so the control is absent
+          // rather than present-and-inert.
+          onSwitch={list.length > 1 ? () => setSwitching(true) : undefined}
+        />
       ) : null}
 
       {list.length > 1 ? (
@@ -128,10 +110,3 @@ export default function HomeScreen() {
     </TabScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  // The row carries a 44pt button, so the gap the ScrollView already puts
-  // between children would leave the kicker floating away from its card. The
-  // negative margin pulls the pair back together.
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-});

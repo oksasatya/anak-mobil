@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AmBadge, AmBrandLogo, AmCard } from "@/components/display";
 import { kicker, numeric, useTheme } from "@/theme";
@@ -8,6 +9,12 @@ import type { Vehicle } from "./types";
 
 export interface VehicleCardProps {
   readonly vehicle: Vehicle;
+  /**
+   * Opens the vehicle switcher. Passed only when there is more than one car —
+   * §61: a control that cannot do anything is worse than no control, so with
+   * one car the "Ganti" affordance is not rendered at all.
+   */
+  readonly onSwitch?: () => void;
 }
 
 interface StatProps {
@@ -43,16 +50,8 @@ function Stat({ label, value, flex }: StatProps) {
  * than rendered as "Rp 0", and a car with no recorded mileage shows no
  * odometer rather than a zero the owner never drove — an invented number is
  * the thing this product must never do.
- *
- * NOTHING IN HERE IS INTERACTIVE, and that is a constraint rather than a
- * preference. On this build a `Pressable` nested inside this card renders but
- * never fires — verified on the simulator against an identical control placed
- * outside it, which does. The mockup draws the "Ganti" switcher inside this
- * card's header; it lives on the Home screen instead, above the card, because
- * a control that draws and does nothing is worse than one that is absent. See
- * the AmMaterial entry in the review ledger.
  */
-export function VehicleCard({ vehicle }: VehicleCardProps) {
+export function VehicleCard({ vehicle, onSwitch }: VehicleCardProps) {
   const theme = useTheme();
   const summary = vehicle.summary;
   // Mileage is deliberately NOT in this line. It is the odometer hero below,
@@ -69,6 +68,27 @@ export function VehicleCard({ vehicle }: VehicleCardProps) {
   return (
     <AmCard role="working" padding={5} radius="xl">
       <View style={{ gap: theme.space[3] }}>
+        <View style={styles.row}>
+          <Text style={[theme.type.micro, kicker, { color: theme.color.textTertiary }]}>
+            Mobil aktif
+          </Text>
+          {onSwitch ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ganti mobil aktif"
+              onPress={onSwitch}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.switch,
+                { minHeight: theme.touchTargetMin, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text style={[theme.type.label, { color: theme.color.accentText }]}>Ganti</Text>
+              <Ionicons name="chevron-down" size={14} color={theme.color.accentText} />
+            </Pressable>
+          ) : null}
+        </View>
+
         <View style={[styles.identity, { gap: theme.space[3] }]}>
           <AmBrandLogo domain={vehicle.brand_logo_domain} name={vehicle.name} size={34} />
           <View style={styles.identityText}>
@@ -139,6 +159,9 @@ export function VehicleCard({ vehicle }: VehicleCardProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  // The 44pt target would stretch the header past the card's own spacing
+  // rhythm; the negative margin takes back exactly what minHeight adds.
+  switch: { flexDirection: "row", alignItems: "center", gap: 4, marginVertical: -13 },
   identity: { flexDirection: "row", alignItems: "center" },
   identityText: { flex: 1, gap: 2 },
   rule: { height: 1 },
