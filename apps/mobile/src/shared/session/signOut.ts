@@ -1,3 +1,5 @@
+import { useAhaSeen } from "@/features/onboarding/ahaSeen";
+import { useDraft } from "@/features/onboarding/draft";
 import { BASE_URL } from "@/shared/api/baseUrl";
 import { purgeAllPersistedCache, queryClient } from "@/shared/api/queryClient";
 import { clearSession, readSession } from "@/shared/session/secure";
@@ -90,6 +92,13 @@ async function run(): Promise<void> {
     // signed out: the next account has no car with this id, so every query
     // keyed on it would 404.
     clearActiveVehicle();
+
+    // The half-finished car and the record of which aha screens have been
+    // shown. Hygiene rather than the defence: `adoptUser` discards a draft
+    // stamped with a different account on read, so a wipe missed here cannot
+    // show one person's half-entered car to the next.
+    useDraft.getState().clear();
+    useAhaSeen.getState().clear();
   } finally {
     // Unconditional even if the try above threw. `.catch` rather than letting
     // a rejection here skip `setSignedOut()` too — the tokens might survive on

@@ -9,9 +9,10 @@
  * Every dependency of the three files under test is faked via `mock.module`
  * (Bun's own module-mocking facility — no added library). `@/shared/api/errors`
  * is the one exception: it is pure and native-free, so it runs for real.
- * `@/shared/api/queryClient` and `@/shared/vehicle/activeVehicle` are faked
- * even though they are never "under test" here, because both touch
- * `react-native-mmkv` at module load and would crash outside a device.
+ * `@/shared/api/queryClient`, `@/shared/vehicle/activeVehicle`, and the two
+ * `@/features/onboarding/*` stores are faked even though they are never
+ * "under test" here, because every one of them touches `react-native-mmkv` at
+ * module load and would crash outside a device.
  *
  * `@/shared/api/refresh` and `@/shared/session/signOut` are never mocked: they
  * are each the file under test in one scenario and a real dependency in
@@ -56,6 +57,8 @@ const clearQueryClient = mock((): void => {});
 let purgeAllPersistedCacheImpl = (): void => {};
 const purgeAllPersistedCache = mock((): void => purgeAllPersistedCacheImpl());
 const clearActiveVehicle = mock((): void => {});
+const clearDraft = mock((): void => {});
+const clearAhaSeen = mock((): void => {});
 
 mock.module("@/shared/api/baseUrl", () => ({ BASE_URL: "http://test.invalid" }));
 mock.module("@/shared/session/secure", () => ({
@@ -70,6 +73,12 @@ mock.module("@/shared/api/queryClient", () => ({
   purgeAllPersistedCache,
 }));
 mock.module("@/shared/vehicle/activeVehicle", () => ({ clearActiveVehicle }));
+mock.module("@/features/onboarding/draft", () => ({
+  useDraft: { getState: () => ({ clear: clearDraft }) },
+}));
+mock.module("@/features/onboarding/ahaSeen", () => ({
+  useAhaSeen: { getState: () => ({ clear: clearAhaSeen }) },
+}));
 
 interface FetchCall {
   url: string;
@@ -134,6 +143,8 @@ beforeEach(() => {
     clearQueryClient,
     purgeAllPersistedCache,
     clearActiveVehicle,
+    clearDraft,
+    clearAhaSeen,
   ]) {
     fn.mockClear();
   }
@@ -390,4 +401,19 @@ test("nothing re-enables the tab-reset behaviour AC1 forbids", () => {
   const layout = readFileSync(join(APP_DIR, "(app)", "_layout.tsx"), "utf8");
   expect(layout).not.toMatch(/popToTopOnBlur\s*[:=]/);
   expect(layout).not.toMatch(/unmountOnBlur\s*[:=]/);
+});
+
+test("sign-out discards the onboarding draft and the seen-aha record", async () => {
+  sessionState = null; // no stored session — the best-effort logout POST is skipped
+
+  await signOut();
+
+  // Both live in the guarded span beside `clearActiveVehicle`, and both are
+  // one line each — which is exactly what makes them easy to drop in a later
+  // edit of that block. Deleting either turns its count to 0, and the
+  // consequence is a half-entered car from the previous account greeting
+  // whoever signs in next on this device.
+  expect(clearDraft).toHaveBeenCalledTimes(1);
+  expect(clearAhaSeen).toHaveBeenCalledTimes(1);
+  expect(setSignedOutCalls).toBe(1);
 });
