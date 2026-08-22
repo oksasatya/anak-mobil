@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type ViewStyle,
+} from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 
 import { AmBottomSheet } from "@/components/display";
 import { useTheme } from "@/theme";
@@ -36,6 +44,7 @@ export function AmSelect<T extends string>({
   style,
 }: AmSelectProps<T>) {
   const theme = useTheme();
+  const { height } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value);
 
@@ -76,40 +85,53 @@ export function AmSelect<T extends string>({
       </Pressable>
 
       <AmBottomSheet visible={open} onClose={() => setOpen(false)} title={label}>
-        <View accessibilityRole="radiogroup">
-          {options.map((option) => {
-            const isSelected = option.value === value;
-            return (
-              <Pressable
-                key={option.value}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected }}
-                onPress={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                style={({ pressed }) => [
-                  styles.option,
-                  {
-                    minHeight: theme.touchTargetMin,
-                    paddingHorizontal: theme.space[4],
-                    borderRadius: theme.radius.sm,
-                    backgroundColor: pressed ? theme.color.surfaceSubtle : "transparent",
-                  },
-                ]}
-              >
-                <Text style={[theme.type["body-lg"], { color: theme.color.textPrimary }]}>
-                  {option.label}
-                </Text>
-                {isSelected ? (
-                  <Text style={[theme.type["body-lg"], { color: theme.color.accentText }]}>
-                    {"✓"}
+        {/*
+          The sheet grows to its content and has no scroll of its own, so a
+          catalog-length list renders off the top of the screen. Half the
+          viewport is the cap; that is a viewport fraction rather than a design
+          value, so it is not a raw literal the theme should own.
+
+          ScrollView comes from react-native-gesture-handler, not react-native:
+          AmBottomSheet runs a Gesture.Pan() over its whole body, and RNGH's
+          scrollable is the one that composes with a parent pan instead of
+          losing to it.
+        */}
+        <ScrollView style={{ maxHeight: height * 0.5 }} showsVerticalScrollIndicator>
+          <View accessibilityRole="radiogroup">
+            {options.map((option) => {
+              const isSelected = option.value === value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.option,
+                    {
+                      minHeight: theme.touchTargetMin,
+                      paddingHorizontal: theme.space[4],
+                      borderRadius: theme.radius.sm,
+                      backgroundColor: pressed ? theme.color.surfaceSubtle : "transparent",
+                    },
+                  ]}
+                >
+                  <Text style={[theme.type["body-lg"], { color: theme.color.textPrimary }]}>
+                    {option.label}
                   </Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
+                  {isSelected ? (
+                    <Text style={[theme.type["body-lg"], { color: theme.color.accentText }]}>
+                      {"✓"}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
       </AmBottomSheet>
     </View>
   );
