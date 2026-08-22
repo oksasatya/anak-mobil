@@ -60,9 +60,21 @@ pub enum Role {
 /// reaching for an argument parser.
 const GRANT_ADMIN: &str = "grant-admin";
 
+/// The other command that is not a process role.
+///
+/// It prints two numbers and exits, so it is not a description of what the process *is*
+/// — `Role` models that. Matched by hand for the same reason `grant-admin` is.
+///
+/// Shell access rather than an admin session, deliberately, and the same argument
+/// `grant-admin` makes: this is an operator's question about the platform, not a
+/// person's question about their own data, so it does not want an HTTP surface, a DTO,
+/// or a rate limit.
+const QUEUE_STATS: &str = "queue-stats";
+
 impl Role {
-    const USAGE: &'static str =
-        "usage: anakmobil <web|worker|migrate>\n       anakmobil grant-admin <email>";
+    const USAGE: &'static str = "usage: anakmobil <web|worker|migrate>\n       \
+                                 anakmobil grant-admin <email>\n       \
+                                 anakmobil queue-stats";
 
     /// Read the role from the first command-line argument.
     ///
@@ -119,6 +131,12 @@ pub async fn run() -> anyhow::Result<()> {
         return run_grant_admin(&config, &email).await;
     }
 
+    if command.as_deref() == Some(QUEUE_STATS) {
+        let config = Config::from_env()?;
+        logging::init(config.app_env, &config.log_level)?;
+        return run_queue_stats(&config).await;
+    }
+
     let role = Role::parse(command.as_deref()).map_err(anyhow::Error::msg)?;
 
     // Configuration is read before logging is installed, so its failures are
@@ -140,7 +158,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     match role {
         Role::Web => run_web(&config).await?,
-        Role::Worker => run_worker().await,
+        Role::Worker => run_worker(&config).await?,
         Role::Migrate => run_migrate(&config).await?,
     }
 
@@ -202,23 +220,58 @@ async fn run_web(config: &Config) -> anyhow::Result<()> {
 
 /// Background worker role.
 ///
-/// The Postgres-backed queue — lease, retry with backoff, dead-letter — lands
-/// in AM-358, and the media pipeline it first serves in AM-359.
+/// Claims from the Postgres queue, runs the job, and records the outcome; a lease that
+/// expires hands an unfinished job to the next worker. See [`usecase::jobs`] for the
+/// retry curve, the failure taxonomy, and why the loop is sequential.
 ///
-/// Deliberately does **not** run migrations. One role owns applying them, and
-/// a worker starting against a schema the web role has not migrated yet is
-/// exactly the case expand-and-contract makes safe: a column is added in one
-/// release and only removed in a later one, so an older reader keeps working.
+/// Deliberately does **not** run migrations. One role owns applying them, and a worker
+/// starting against a schema the web role has not migrated yet is exactly the case
+/// expand-and-contract makes safe: a column is added in one release and only removed in
+/// a later one, so an older reader keeps working.
 ///
-/// No HTTP probe port here, deliberately. One was designed and dropped: a
-/// listener running beside a job loop answers `200` while that loop is
-/// deadlocked, which is precisely the failure it would have been added to
-/// catch. Detecting a wedged worker needs a progress heartbeat from the loop
-/// itself, so it arrives with the loop in AM-358.
-async fn run_worker() {
-    tracing::info!("worker queue not wired yet — AM-358 (queue), AM-359 (media)");
-    shutdown::signal_received().await;
-    tracing::info!("shutdown signal received, finishing in-flight jobs");
+/// No HTTP probe port here, deliberately. One was designed and dropped: a listener
+/// running beside a job loop answers `200` while that loop is deadlocked, which is
+/// precisely the failure it would have been added to catch.
+///
+/// The comment this replaces promised a progress heartbeat instead, "arriving with the
+/// loop in AM-358". It has arrived, and it needed no new machinery: a wedged loop stops
+/// settling, so the **age of the oldest pending job** — `anakmobil queue-stats` — climbs
+/// without bound. That is the same signal a heartbeat table would have carried, read
+/// from a column that already exists.
+async fn run_worker(config: &Config) -> anyhow::Result<()> {
+    let pool = adapter::postgres::connect(config.database_url.expose())?;
+
+    usecase::jobs::run(&pool, dispatch, shutdown::signal_received()).await;
+
+    tracing::info!("shutdown signal received, in-flight job finished");
+    // Bounded, mirroring `run_web`: the loop is designed to survive a database outage by
+    // logging and polling again, so a `pool.close()` left unbounded would wait on
+    // connections it cannot close gracefully and turn the platform's own SIGTERM grace
+    // period into a SIGKILL.
+    let closed = shutdown::within(adapter::http::DRAIN_TIMEOUT, async move {
+        pool.close().await;
+    })
+    .await;
+    if closed {
+        tracing::info!("connections closed");
+    }
+    Ok(())
+}
+
+/// Every job kind this build knows how to run.
+///
+/// None yet. `media.process` arrives with AM-359, and until it does an unknown kind is a
+/// **permanent** failure rather than a transient one: a build that does not know a kind
+/// will not learn it by waiting, and eight attempts to discover that would delay every
+/// other job for twenty minutes to reach the same dead-letter.
+///
+/// The job's kind is logged; its payload never is. A payload carries a media id today
+/// and something private tomorrow.
+async fn dispatch(job: usecase::jobs::Job) -> usecase::jobs::JobOutcome {
+    Err(usecase::jobs::JobFailure::Permanent(format!(
+        "unknown job kind `{}`",
+        job.kind
+    )))
 }
 
 /// Grant the first platform admin, when the platform has none.
@@ -260,6 +313,26 @@ async fn run_grant_admin(config: &Config, email: &str) -> anyhow::Result<()> {
         Some(_) => println!("granted: {target} is now a platform admin"),
         None => println!("no change: {target} is already a platform admin"),
     }
+
+    pool.close().await;
+    Ok(())
+}
+
+/// Print the queue's two numbers and exit.
+///
+/// The age of the oldest job still owed work, and how many gave up. `println!` rather
+/// than a log line: this is output a person asked for, not an event.
+async fn run_queue_stats(config: &Config) -> anyhow::Result<()> {
+    let pool = adapter::postgres::connect(config.database_url.expose())?;
+    let mut conn = pool.acquire().await?;
+    let stats = adapter::postgres::job_repo::stats(&mut conn).await?;
+    drop(conn);
+
+    match stats.oldest_pending_age_seconds {
+        Some(age) => println!("oldest pending job: {age:.0}s"),
+        None => println!("oldest pending job: none"),
+    }
+    println!("dead jobs: {}", stats.dead);
 
     pool.close().await;
     Ok(())
@@ -330,5 +403,36 @@ mod tests {
         let err = Role::parse(Some("webb")).unwrap_err();
         assert!(err.contains("web|worker|migrate"));
         assert!(err.contains(GRANT_ADMIN));
+        assert!(err.contains(QUEUE_STATS));
+    }
+
+    #[test]
+    fn queue_stats_is_not_a_process_role() {
+        // Same prohibition as `grant-admin`. `Role` is what the process IS; this prints
+        // and exits.
+        let err = Role::parse(Some(QUEUE_STATS)).unwrap_err();
+        assert!(err.contains("unknown role"));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_kind_dead_letters_rather_than_retrying() {
+        // AC3: an unknown kind must be Permanent, not Transient. Before this test,
+        // flipping the variant reddened nothing in the suite — the only thing that
+        // caught it was a manual `make be-worker` run, which happens once and never
+        // again. A Transient classification here would retry eight times over ~21
+        // minutes with every real job queued behind it waiting.
+        let job = usecase::jobs::Job {
+            id: uuid::Uuid::now_v7(),
+            kind: "nope".to_owned(),
+            payload: serde_json::json!({}),
+            effect_key: None,
+            attempts: 1,
+            max_attempts: 8,
+        };
+        let outcome = dispatch(job).await;
+        assert!(
+            matches!(outcome, Err(usecase::jobs::JobFailure::Permanent(_))),
+            "an unknown job kind must dead-letter on the first attempt, not retry"
+        );
     }
 }
