@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE jobs SET\n            state        = 'leased',\n            leased_until = now() + ($2::double precision * interval '1 second'),\n            leased_by    = $1,\n            attempts     = attempts + 1\n        WHERE id = (\n            SELECT id FROM jobs\n            WHERE state IN ('queued', 'leased')\n              AND COALESCE(leased_until, run_at) <= now()\n            ORDER BY COALESCE(leased_until, run_at)\n            FOR UPDATE SKIP LOCKED\n            LIMIT 1\n        )\n        RETURNING\n            id           AS \"id!\",\n            kind         AS \"kind!\",\n            payload      AS \"payload!\",\n            effect_key   AS \"effect_key?\",\n            attempts     AS \"attempts!\",\n            max_attempts AS \"max_attempts!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "payload!",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "payload"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "effect_key?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "effect_key"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "attempts!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "attempts"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "max_attempts!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "max_attempts"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "d7fcd7a1177d8e463f53396e01d7649d83f0b429c3738380863666a2cdeeb9ad"
+}

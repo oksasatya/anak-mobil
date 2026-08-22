@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT pg_get_constraintdef(oid) AS \"def!\"\n             FROM pg_constraint WHERE conname = 'jobs_lease_matches_state'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "def!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "40652260848e6e1aa9820b93b36db5f141196ed8282a34b9016c2f168cfaee7c"
+}

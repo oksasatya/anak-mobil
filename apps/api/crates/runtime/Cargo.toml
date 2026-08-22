@@ -32,7 +32,7 @@ sha2 = "0.11.0"
 # `macros` gives compile-time-checked SQL. It needs either a reachable
 # DATABASE_URL or the committed .sqlx cache; CI uses the cache, which is why
 # `cargo sqlx prepare` runs whenever a query changes.
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "macros", "uuid", "bigdecimal", "time"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "macros", "uuid", "bigdecimal", "time", "json"] }
 thiserror = "2.0.20"
 time = { version = "0.3.44", features = ["formatting", "parsing", "serde", "macros"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "net", "time"] }
@@ -45,6 +45,8 @@ uuid = { version = "1.24.1", features = ["v7", "serde"] }
 # tests need neither a server nor a database.
 http-body-util = "0.1.3"
 # `test-util` gives `start_paused`, so the shutdown-deadline tests assert a
-# 30-second budget without taking 30 seconds.
-tokio = { version = "1.53.1", features = ["test-util"] }
+# 30-second budget without taking 30 seconds. `sync` gives `tokio::sync::Mutex`,
+# which `tests/job_queue.rs` uses to serialise its own tests against a shared
+# queue — production code does not need it, so it stays dev-only.
+tokio = { version = "1.53.1", features = ["test-util", "sync"] }
 tower = { version = "0.5.3", features = ["util"] }

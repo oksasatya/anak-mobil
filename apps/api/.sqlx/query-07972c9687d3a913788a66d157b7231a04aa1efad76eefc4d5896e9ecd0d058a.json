@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE jobs SET state = 'done', leased_until = NULL, leased_by = NULL, last_error = NULL\n        WHERE id = $1 AND state = 'leased' AND leased_by = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "07972c9687d3a913788a66d157b7231a04aa1efad76eefc4d5896e9ecd0d058a"
+}
