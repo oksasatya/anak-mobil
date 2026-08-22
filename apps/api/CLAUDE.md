@@ -144,6 +144,56 @@ Compile-time macros (`query!`, `query_as!`). Never build SQL with `format!`.
 
 Migrations live in `crates/runtime/migrations/`, not at the workspace root — `sqlx::migrate!()` and `#[sqlx::test]` resolve the path relative to `CARGO_MANIFEST_DIR`.
 
+## The job queue
+
+One `jobs` table, claimed with `SELECT … FOR UPDATE SKIP LOCKED`. `web` enqueues,
+`worker` claims. Redis is not involved and will not be — the failures that matter need
+leases, retries, and dead-lettering whatever the broker is.
+
+**It is at-least-once, and that is a contract rather than a limitation.** A worker can
+die between finishing its work and recording that it finished. What the queue guarantees
+is that a job is never lost: the lease expires and another worker takes it.
+
+- **A side effect inside this database** is made idempotent by the transaction that
+  writes it. `enqueue` takes a `&mut PgConnection` precisely so a caller can flip its own
+  row and queue the job together.
+- **A side effect outside it** — an object in storage, a push handed to a provider — is
+  the consumer's to dedupe. `jobs.effect_key` gives it a stable name to dedupe on, and a
+  partial unique index makes enqueuing the same *live* key a no-op. Terminal dedupe is
+  the consumer's own, recorded in the same transaction as the effect.
+- **An `effect_key` is `<kind-prefix>:<id>`, by convention rather than by constraint.**
+  The unique index is on `effect_key` alone, not on `(kind, effect_key)`. Two different
+  job kinds that happened to share an id space would collide on that index, and the
+  second enqueue would silently be dropped as a duplicate of the first. The kind prefix
+  is the only thing keeping each kind's ids in its own namespace — nothing in the schema
+  enforces it, so a new kind must pick a prefix nothing else uses.
+- **An `effect_key` is derived on the server, from an id the server already trusts —
+  never from a request field.** If one were built from client input, a caller sending
+  `media:<someone else's id>` would suppress that media's processing for as long as the
+  forged key stays live: `enqueue` returns `Ok(None)` ("already queued, do nothing") and
+  nothing anywhere records that the suppression happened.
+- **A validation failure never retries.** `JobFailure::Permanent` dead-letters on the
+  first attempt; only `Transient` backs off. A malformed input fails identically every
+  time, and eight attempts to discover that delay every other job.
+- **`payload` and `last_error` have no shape or size bound at the schema level.** The
+  rule lives in a column comment and in `ERROR_MAX_CHARS`, not in a `CHECK` constraint.
+  There is no retention or cleanup of `done` rows, so anything written into `payload`
+  lives in this table forever and travels into every backup from then on. The consumer
+  that defines a job kind's payload shape is the only enforcement point there is.
+- **`LEASE` must exceed the longest a job can take — it is 300 seconds, and that number
+  is bound to AM-359's decode wall-clock limit specifically.** A job that runs longer
+  has its own lease expire under it and gets handed to a second worker — the log line
+  for that is `lost the lease before settling`, and it means the bound on the job is
+  wrong, not that the worker is. The two numbers live in different modules and nothing
+  connects them automatically; this sentence is the connection, the same way spec §9
+  records the staging-TTL relationship for the same reason.
+- **`attempts` increments on the claim, not on the failure**, so a worker killed mid-job
+  still burns an attempt and a crash-looping payload still reaches the cap.
+
+`anakmobil queue-stats` prints the age of the oldest job still owed work and how many
+gave up. There is no metrics service and no probe port: a listener beside a job loop
+answers `200` while the loop is deadlocked, whereas the oldest-pending age climbs.
+
 ## Authentication
 
 Sessions live in Redis and tokens are opaque, never JWTs. A signed JWT cannot be revoked, only waited out, so logout would not be an act.
