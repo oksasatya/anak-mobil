@@ -335,7 +335,17 @@ test("each group layout wraps its navigator in the matching gate", () => {
 });
 
 test("every route file outside catalog.tsx and the entry index.tsx lives inside a route group", () => {
-  const allowedUngrouped = new Set(["catalog.tsx", "index.tsx"]);
+  // `aha.tsx` joined these deliberately, and the assertion below is what keeps
+  // the exemption honest. It CANNOT live in `(onboarding)`: `OnboardingGate`
+  // redirects that whole group away the moment `hasVehicles` turns true, and
+  // the save sequence turns it true before it navigates — so the screen
+  // celebrating the first car was redirected away before it could draw.
+  const allowedUngrouped = new Set(["catalog.tsx", "index.tsx", "aha.tsx"]);
+  // An ungrouped route is outside every gate, so it owes its own. These two
+  // predate the gates and are demo surfaces; anything added after them must
+  // carry a signed-out redirect of its own, which is what the extra assertion
+  // below checks rather than taking the allowlist's word for it.
+  const mustGuardItself = new Set(["aha.tsx"]);
 
   function collectRouteFiles(dir: string): string[] {
     const files: string[] = [];
@@ -355,9 +365,16 @@ test("every route file outside catalog.tsx and the entry index.tsx lives inside 
     const topLevelName = segments[0];
 
     if (segments.length === 1) {
-      // A new screen at `src/app/foo.tsx` lands here — ungated, and nothing
-      // else in the gate/route tree catches it.
+      // A new screen at `src/app/foo.tsx` lands here — outside every group
+      // gate, and nothing else in the gate/route tree catches it.
       expect(allowedUngrouped.has(topLevelName)).toBe(true);
+      if (mustGuardItself.has(topLevelName)) {
+        // Deleting the guard from an ungrouped route is the failure this
+        // exemption would otherwise let through silently.
+        const source = readFileSync(file, "utf8");
+        expect(source).toContain("useSession");
+        expect(source).toMatch(/<Redirect href="\/\(auth\)"/);
+      }
     } else {
       expect(topLevelName.startsWith("(") && topLevelName.endsWith(")")).toBe(true);
     }
