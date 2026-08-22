@@ -9,9 +9,10 @@
  * Every dependency of the three files under test is faked via `mock.module`
  * (Bun's own module-mocking facility — no added library). `@/shared/api/errors`
  * is the one exception: it is pure and native-free, so it runs for real.
- * `@/shared/api/queryClient` and `@/shared/vehicle/activeVehicle` are faked
- * even though they are never "under test" here, because both touch
- * `react-native-mmkv` at module load and would crash outside a device.
+ * `@/shared/api/queryClient`, `@/shared/vehicle/activeVehicle`, and the two
+ * `@/features/onboarding/*` stores are faked even though they are never
+ * "under test" here, because every one of them touches `react-native-mmkv` at
+ * module load and would crash outside a device.
  *
  * `@/shared/api/refresh` and `@/shared/session/signOut` are never mocked: they
  * are each the file under test in one scenario and a real dependency in
@@ -56,6 +57,8 @@ const clearQueryClient = mock((): void => {});
 let purgeAllPersistedCacheImpl = (): void => {};
 const purgeAllPersistedCache = mock((): void => purgeAllPersistedCacheImpl());
 const clearActiveVehicle = mock((): void => {});
+const clearDraft = mock((): void => {});
+const clearAhaSeen = mock((): void => {});
 
 mock.module("@/shared/api/baseUrl", () => ({ BASE_URL: "http://test.invalid" }));
 mock.module("@/shared/session/secure", () => ({
@@ -70,6 +73,12 @@ mock.module("@/shared/api/queryClient", () => ({
   purgeAllPersistedCache,
 }));
 mock.module("@/shared/vehicle/activeVehicle", () => ({ clearActiveVehicle }));
+mock.module("@/features/onboarding/draft", () => ({
+  useDraft: { getState: () => ({ clear: clearDraft }) },
+}));
+mock.module("@/features/onboarding/ahaSeen", () => ({
+  useAhaSeen: { getState: () => ({ clear: clearAhaSeen }) },
+}));
 
 interface FetchCall {
   url: string;
@@ -134,6 +143,8 @@ beforeEach(() => {
     clearQueryClient,
     purgeAllPersistedCache,
     clearActiveVehicle,
+    clearDraft,
+    clearAhaSeen,
   ]) {
     fn.mockClear();
   }
@@ -324,7 +335,17 @@ test("each group layout wraps its navigator in the matching gate", () => {
 });
 
 test("every route file outside catalog.tsx and the entry index.tsx lives inside a route group", () => {
-  const allowedUngrouped = new Set(["catalog.tsx", "index.tsx"]);
+  // `aha.tsx` joined these deliberately, and the assertion below is what keeps
+  // the exemption honest. It CANNOT live in `(onboarding)`: `OnboardingGate`
+  // redirects that whole group away the moment `hasVehicles` turns true, and
+  // the save sequence turns it true before it navigates — so the screen
+  // celebrating the first car was redirected away before it could draw.
+  const allowedUngrouped = new Set(["catalog.tsx", "index.tsx", "aha.tsx"]);
+  // An ungrouped route is outside every gate, so it owes its own. These two
+  // predate the gates and are demo surfaces; anything added after them must
+  // carry a signed-out redirect of its own, which is what the extra assertion
+  // below checks rather than taking the allowlist's word for it.
+  const mustGuardItself = new Set(["aha.tsx"]);
 
   function collectRouteFiles(dir: string): string[] {
     const files: string[] = [];
@@ -344,9 +365,16 @@ test("every route file outside catalog.tsx and the entry index.tsx lives inside 
     const topLevelName = segments[0];
 
     if (segments.length === 1) {
-      // A new screen at `src/app/foo.tsx` lands here — ungated, and nothing
-      // else in the gate/route tree catches it.
+      // A new screen at `src/app/foo.tsx` lands here — outside every group
+      // gate, and nothing else in the gate/route tree catches it.
       expect(allowedUngrouped.has(topLevelName)).toBe(true);
+      if (mustGuardItself.has(topLevelName)) {
+        // Deleting the guard from an ungrouped route is the failure this
+        // exemption would otherwise let through silently.
+        const source = readFileSync(file, "utf8");
+        expect(source).toContain("useSession");
+        expect(source).toMatch(/<Redirect href="\/\(auth\)"/);
+      }
     } else {
       expect(topLevelName.startsWith("(") && topLevelName.endsWith(")")).toBe(true);
     }
@@ -390,4 +418,19 @@ test("nothing re-enables the tab-reset behaviour AC1 forbids", () => {
   const layout = readFileSync(join(APP_DIR, "(app)", "_layout.tsx"), "utf8");
   expect(layout).not.toMatch(/popToTopOnBlur\s*[:=]/);
   expect(layout).not.toMatch(/unmountOnBlur\s*[:=]/);
+});
+
+test("sign-out discards the onboarding draft and the seen-aha record", async () => {
+  sessionState = null; // no stored session — the best-effort logout POST is skipped
+
+  await signOut();
+
+  // Both live in the guarded span beside `clearActiveVehicle`, and both are
+  // one line each — which is exactly what makes them easy to drop in a later
+  // edit of that block. Deleting either turns its count to 0, and the
+  // consequence is a half-entered car from the previous account greeting
+  // whoever signs in next on this device.
+  expect(clearDraft).toHaveBeenCalledTimes(1);
+  expect(clearAhaSeen).toHaveBeenCalledTimes(1);
+  expect(setSignedOutCalls).toBe(1);
 });
