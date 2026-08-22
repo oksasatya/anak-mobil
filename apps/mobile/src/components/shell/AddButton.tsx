@@ -46,10 +46,10 @@ interface RowProps {
  * that swallows the tap. There is nothing to press, so there is nothing that
  * looks pressable.
  *
- * The row is a plain bordered View rather than an `AmCard`: a `Pressable`
- * nested inside `AmMaterial` renders but never fires on this build (see the
- * note on `VehicleCard`), and these rows have to work the moment their epic
- * lands.
+ * A plain bordered View rather than an `AmCard`, for layout rather than for
+ * touch: the row needs one border and one radius, and going through the
+ * material would add an edge treatment the sheet's own surface already
+ * provides.
  */
 function ActionRow({ action, onNavigate }: RowProps) {
   const theme = useTheme();
